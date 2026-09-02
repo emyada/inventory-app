@@ -14,7 +14,7 @@ export default function Login() {
     e.preventDefault();
     setBusy(true); setError('');
     const { error } = await signIn(email.trim(), password);
-    if (error) setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    if (error) setError(`เข้าสู่ระบบไม่สำเร็จ: ${error.message}`);
     setBusy(false);
   }
 
