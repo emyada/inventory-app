@@ -3,17 +3,30 @@ import { Package } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { C, sans, inputStyle, btnPrimary } from '../theme';
 
+// Staff never see or type an email — they just use a short username.
+// Behind the scenes, Supabase Auth still requires an email-shaped identifier,
+// so we turn "somchai" into "somchai@iem-workshop.local" before signing in.
+// When you (admin) create a login in Supabase > Authentication > Users, use
+// that same "username@iem-workshop.local" pattern as the email field.
+const USERNAME_DOMAIN = 'iem-workshop.local';
+
+function usernameToEmail(username) {
+  const clean = username.trim().toLowerCase().replace(/\s+/g, '');
+  return `${clean}@${USERNAME_DOMAIN}`;
+}
+
 export default function Login() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!username.trim()) return;
     setBusy(true); setError('');
-    const { error } = await signIn(email.trim(), password);
+    const { error } = await signIn(usernameToEmail(username), password);
     if (error) setError(`เข้าสู่ระบบไม่สำเร็จ: ${error.message}`);
     setBusy(false);
   }
@@ -29,8 +42,8 @@ export default function Login() {
           <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>เข้าสู่ระบบด้วยบัญชีที่หัวหน้าช่างสร้างให้</div>
         </div>
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>อีเมล</div>
-          <input style={inputStyle} type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@workshop.com" />
+          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>ชื่อผู้ใช้</div>
+          <input style={inputStyle} type="text" required value={username} onChange={e => setUsername(e.target.value)} placeholder="เช่น somchai" autoCapitalize="none" autoCorrect="off" />
         </div>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>รหัสผ่าน</div>
