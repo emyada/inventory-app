@@ -56,6 +56,7 @@ function Workspace({ profile, role, signOut, userId }) {
 
   useEffect(() => { if (role !== 'admin' && view === 'report') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'settings') setView('floor'); }, [role, view]);
+  useEffect(() => { if (role === 'staff' && view === 'stock') setView('floor'); }, [role, view]);
 
   async function handleProduce(model, orderRef, staffName) {
     const { error } = await inv.produceUnit(model, orderRef, staffName, userId);
@@ -95,7 +96,7 @@ function Workspace({ profile, role, signOut, userId }) {
     ? [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'stock', label: 'คลัง', icon: Settings }, { key: 'report', label: 'รายงาน', icon: ClipboardList }]
     : role === 'purchasing'
       ? [{ key: 'stock', label: 'คลัง', icon: Settings }]
-      : [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'stock', label: 'คลัง', icon: Settings }];
+      : [{ key: 'floor', label: 'ผลิต', icon: Package }]; // staff: no stock tab
 
   const modelsInCat = inv.models.filter(m => m.category === activeCat);
 
