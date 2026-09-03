@@ -6,3 +6,28 @@ body {
 }
 input, select, button { font-family: inherit; }
 input[type="date"] { color-scheme: dark; }
+
+/* ---- Responsive shell: full-width phone layout on mobile,
+   wider centered layout with 2-column grids on desktop ---- */
+.app-shell {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.grid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 860px) {
+  .app-shell {
+    max-width: 840px;
+  }
+  .grid-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+}
