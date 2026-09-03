@@ -47,7 +47,7 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
       )}
 
       {sub === 'current' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="grid-list">
           {materials.map(m => (
             <div key={m.id} style={{ background: m.qty <= 2 ? 'rgba(217,119,87,0.08)' : C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
