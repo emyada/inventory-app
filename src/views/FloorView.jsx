@@ -11,7 +11,7 @@ export function FloorView({ category, models, materialsById, onProduce, role, on
           <button onClick={onAddModel} style={btnGhost}><Plus size={13} style={{ marginRight: 4 }} /> เพิ่มรุ่น</button>
         )}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="grid-list">
         {models.map(model => {
           const shortage = model.bom.some(b => (materialsById[b.material_id]?.qty ?? 0) < b.qty);
           return (
