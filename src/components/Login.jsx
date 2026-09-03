@@ -10,8 +10,9 @@ import { C, sans, inputStyle, btnPrimary } from '../theme';
 // that same "username@iem-workshop.local" pattern as the email field.
 const USERNAME_DOMAIN = 'iem-workshop.local';
 
-function usernameToEmail(username) {
-  const clean = username.trim().toLowerCase().replace(/\s+/g, '');
+function usernameToEmail(input) {
+  const clean = input.trim().toLowerCase().replace(/\s+/g, '');
+  if (clean.includes('@')) return clean; // already a full email (e.g. an older account) — use as typed
   return `${clean}@${USERNAME_DOMAIN}`;
 }
 
