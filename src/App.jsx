@@ -101,7 +101,7 @@ function Workspace({ profile, role, signOut, userId }) {
 
   return (
     <div style={{ ...sans, background: C.bg, color: C.text, minHeight: '100vh', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 480, minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', boxSizing: 'border-box' }}>
+      <div className="app-shell" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', boxSizing: 'border-box' }}>
         {/* Top bar */}
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.line}`, background: C.panel, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
