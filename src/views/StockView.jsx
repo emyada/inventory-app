@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, PackagePlus, ChevronRight, History, ArrowDownCircle, ArrowUpCircle, Download, Send } from 'lucide-react';
+import { Plus, PackagePlus, ChevronRight, History, ArrowDownCircle, ArrowUpCircle, Download, Send, Search } from 'lucide-react';
 import { C, mono, btnGhost, tabBtn, tabBtnActive, monthStartStr, todayStr } from '../theme';
 import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
@@ -7,6 +7,7 @@ import { sendToGoogleSheet } from '../utils/sheets';
 
 export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
   const [sub, setSub] = useState('current');
+  const [search, setSearch] = useState('');
   const [from, setFrom] = useState(monthStartStr());
   const [to, setTo] = useState(todayStr());
   const [sending, setSending] = useState(false);
@@ -47,22 +48,32 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
       )}
 
       {sub === 'current' && (
-        <div className="grid-list">
-          {materials.map(m => (
-            <div key={m.id} style={{ background: m.qty <= 2 ? 'rgba(217,119,87,0.08)' : C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
-                <div style={{ fontSize: 11, marginTop: 2, ...mono, color: m.qty <= 2 ? C.red : C.teal, fontWeight: 700 }}>{m.qty} {m.unit}</div>
+        <div>
+          <div style={{ position: 'relative', marginBottom: 10 }}>
+            <Search size={14} color={C.textDim} style={{ position: 'absolute', left: 10, top: 10 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหาวัตถุดิบ..."
+              style={{ width: '100%', background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: '8px 10px 8px 32px', color: C.text, fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+          <div className="grid-list">
+            {materials.filter(m => m.name.toLowerCase().includes(search.trim().toLowerCase())).map(m => (
+              <div key={m.id} style={{ background: m.qty <= 2 ? 'rgba(217,119,87,0.08)' : C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                  <div style={{ fontSize: 11, marginTop: 2, ...mono, color: m.qty <= 2 ? C.red : C.teal, fontWeight: 700 }}>{m.qty} {m.unit}</div>
+                </div>
+                <button onClick={() => onRestock(m)} title="รับของเข้าคลัง"
+                  style={{ background: 'rgba(63,167,150,0.14)', border: `1px solid ${C.teal}`, borderRadius: 8, padding: '6px 9px', cursor: 'pointer', color: C.teal, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <PackagePlus size={14} />
+                </button>
+                {role === 'admin' && (
+                  <button onClick={() => onEdit(m)} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', flexShrink: 0 }}><ChevronRight size={16} /></button>
+                )}
               </div>
-              <button onClick={() => onRestock(m)} title="รับของเข้าคลัง"
-                style={{ background: 'rgba(63,167,150,0.14)', border: `1px solid ${C.teal}`, borderRadius: 8, padding: '6px 9px', cursor: 'pointer', color: C.teal, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <PackagePlus size={14} />
-              </button>
-              {role === 'admin' && (
-                <button onClick={() => onEdit(m)} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', flexShrink: 0 }}><ChevronRight size={16} /></button>
-              )}
-            </div>
-          ))}
+            ))}
+            {materials.filter(m => m.name.toLowerCase().includes(search.trim().toLowerCase())).length === 0 && (
+              <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่พบวัตถุดิบที่ค้นหา</div>
+            )}
+          </div>
         </div>
       )}
 
