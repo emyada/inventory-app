@@ -11,6 +11,7 @@ import { MaterialForm } from './components/MaterialForm';
 import { RestockForm } from './components/RestockForm';
 import { ModelForm } from './components/ModelForm';
 import { FloorView } from './views/FloorView';
+import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
 import { ReportView } from './views/ReportView';
 import { SettingsView } from './views/SettingsView';
@@ -64,8 +65,9 @@ function Workspace({ profile, role, signOut, userId }) {
     else { showToast(`บันทึกผลิต ${model.name} — ออเดอร์ ${orderRef} แล้ว`, 'ok'); setProduceModel(null); }
   }
   async function handleCancel(tx) {
-    await inv.cancelTransaction(tx, userId);
-    showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
+    const { error } = await inv.cancelTransaction(tx, userId);
+    if (error) showToast(error, 'warn');
+    else showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
     setCancelTx(null);
   }
   async function handleSaveMaterial(m) {
@@ -102,7 +104,7 @@ function Workspace({ profile, role, signOut, userId }) {
 
   return (
     <div style={{ ...sans, background: C.bg, color: C.text, minHeight: '100vh', display: 'flex', justifyContent: 'center' }}>
-      <div className="app-shell" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', boxSizing: 'border-box' }}>
+      <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', position: 'relative', boxSizing: 'border-box', overflow: 'hidden' }}>
         {/* Top bar */}
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.line}`, background: C.panel, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -144,6 +146,9 @@ function Workspace({ profile, role, signOut, userId }) {
           {view === 'floor' && (
             <FloorView category={activeCat} models={modelsInCat} materialsById={inv.materialsById}
               onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel} />
+          )}
+          {view === 'floor' && role === 'staff' && (
+            <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
           )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}
