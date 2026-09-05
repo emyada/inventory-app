@@ -9,6 +9,14 @@ function minutesLeft(createdAt) {
   return Math.max(0, Math.ceil((CANCEL_WINDOW_MS - elapsed) / 60000));
 }
 
+function pickStatus(bomSnapshot) {
+  const total = bomSnapshot.length;
+  const done = bomSnapshot.filter(b => b.picked).length;
+  if (done === 0) return { label: 'รอเบิก', color: C.textDim };
+  if (done === total) return { label: 'เบิกครบแล้ว', color: C.teal };
+  return { label: `เบิกแล้ว ${done}/${total}`, color: C.amber };
+}
+
 export function MyOrders({ transactions, userId, onCancel }) {
   const [, forceTick] = useState(0);
   // re-render every 30s so the countdown / cancel-eligibility stays accurate
@@ -30,11 +38,13 @@ export function MyOrders({ transactions, userId, onCancel }) {
         {mine.map(t => {
           const left = minutesLeft(t.created_at);
           const canCancel = left > 0;
+          const status = pickStatus(t.bom_snapshot);
           return (
             <div key={t.id} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 9, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>{t.model_name}</div>
                 <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref}</div>
+                <div style={{ fontSize: 10.5, color: status.color, fontWeight: 600, marginTop: 2 }}>{status.label}</div>
               </div>
               {canCancel ? (
                 <button onClick={() => onCancel(t)} title={`ยกเลิกได้อีก ${left} นาที`}

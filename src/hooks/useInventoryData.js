@@ -58,44 +58,88 @@ export function useInventoryData(role) {
   const materialsById = Object.fromEntries(materials.map(m => [m.id, m]));
 
   async function produceUnit(model, orderRef, staffName, userId) {
-    const shortages = model.bom.filter(b => (materialsById[b.material_id]?.qty ?? 0) < b.qty);
-    if (shortages.length) {
-      return { error: 'วัตถุดิบไม่พอ: ' + shortages.map(b => materialsById[b.material_id]?.name).join(', ') };
-    }
-    // Deduct stock
-    for (const b of model.bom) {
-      const m = materialsById[b.material_id];
-      await supabase.from('materials').update({ qty: m.qty - b.qty }).eq('id', b.material_id);
-    }
+    // This now only files a REQUEST — nothing is deducted yet. The stock lead
+    // picks each material line individually (pickLine) once it's physically
+    // handed over, and that's the moment stock actually gets deducted.
     const bomSnapshot = model.bom.map(b => ({
       material_id: b.material_id,
       material_name: materialsById[b.material_id]?.name || '',
       unit: materialsById[b.material_id]?.unit || '',
       qty: b.qty,
+      picked: false,
     }));
-    await supabase.from('transactions').insert({
+    const { error } = await supabase.from('transactions').insert({
       model_id: model.id, model_name: model.name, category: model.category,
       order_ref: orderRef, staff_name: staffName, bom_snapshot: bomSnapshot, created_by: userId,
     });
-    await supabase.from('stock_log').insert(bomSnapshot.map(b => ({
-      type: 'out', material_id: b.material_id, material_name: b.material_name, unit: b.unit, amount: b.qty,
-      order_ref: orderRef, staff_name: staffName, created_by: userId,
-    })));
+    if (error) return { error: error.message };
+    await loadAll();
+    return { error: null };
+  }
+
+  async function pickLine(tx, materialId, userId) {
+    const line = tx.bom_snapshot.find(b => b.material_id === materialId);
+    if (!line || line.picked) return { error: null };
+    const m = materialsById[materialId];
+    if (!m || m.qty < line.qty) {
+      return { error: `${line.material_name} ไม่พอในคลัง (มี ${m?.qty ?? 0} ${line.unit}, ต้องการ ${line.qty})` };
+    }
+    const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: true } : b);
+    const { data: updated, error } = await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id).select();
+    if (error || !updated || updated.length === 0) {
+      return { error: 'บันทึกไม่สำเร็จ (สิทธิ์ไม่พอ หรือมีปัญหาการเชื่อมต่อ)' };
+    }
+    await supabase.from('materials').update({ qty: m.qty - line.qty }).eq('id', materialId);
+    await supabase.from('stock_log').insert({
+      type: 'out', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
+      order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
+    });
+    await loadAll();
+    return { error: null };
+  }
+
+  async function unpickLine(tx, materialId, userId) {
+    const line = tx.bom_snapshot.find(b => b.material_id === materialId);
+    if (!line || !line.picked) return { error: null };
+    const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: false } : b);
+    const { data: updated, error } = await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id).select();
+    if (error || !updated || updated.length === 0) {
+      return { error: 'ยกเลิกไม่สำเร็จ (สิทธิ์ไม่พอ หรือมีปัญหาการเชื่อมต่อ)' };
+    }
+    const m = materialsById[materialId];
+    if (m) await supabase.from('materials').update({ qty: m.qty + line.qty }).eq('id', materialId);
+    await supabase.from('stock_log').insert({
+      type: 'in', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
+      order_ref: `ยกเลิกการหยิบ: ${tx.order_ref}`, staff_name: tx.staff_name, created_by: userId,
+    });
     await loadAll();
     return { error: null };
   }
 
   async function cancelTransaction(tx, userId) {
-    for (const b of tx.bom_snapshot) {
+    // Delete first and check what actually got removed — RLS silently allows a
+    // delete call to "succeed" with zero rows affected if the policy blocks it
+    // (e.g. a staff member's 30-minute self-cancel window has expired, or it's
+    // not their own order). Only restore stock if the row was truly deleted,
+    // otherwise we'd double-count materials while the order stays on record.
+    const { data: deleted, error } = await supabase.from('transactions').delete().eq('id', tx.id).select();
+    if (error || !deleted || deleted.length === 0) {
+      return { error: 'ยกเลิกไม่สำเร็จ — อาจเกิน 30 นาทีแล้ว หรือไม่ใช่ออเดอร์ของคุณ ให้หัวหน้าช่างยกเลิกแทน' };
+    }
+    // Only lines that were already picked actually deducted stock — only those need restoring.
+    const pickedLines = tx.bom_snapshot.filter(b => b.picked);
+    for (const b of pickedLines) {
       const m = materialsById[b.material_id];
       if (m) await supabase.from('materials').update({ qty: m.qty + b.qty }).eq('id', b.material_id);
     }
-    await supabase.from('stock_log').insert(tx.bom_snapshot.map(b => ({
-      type: 'in', material_id: b.material_id, material_name: b.material_name, unit: b.unit, amount: b.qty,
-      order_ref: `ยกเลิก: ${tx.order_ref}`, staff_name: tx.staff_name, created_by: userId,
-    })));
-    await supabase.from('transactions').delete().eq('id', tx.id);
+    if (pickedLines.length) {
+      await supabase.from('stock_log').insert(pickedLines.map(b => ({
+        type: 'in', material_id: b.material_id, material_name: b.material_name, unit: b.unit, amount: b.qty,
+        order_ref: `ยกเลิก: ${tx.order_ref}`, staff_name: tx.staff_name, created_by: userId,
+      })));
+    }
     await loadAll();
+    return { error: null };
   }
 
   async function saveMaterial(m) {
@@ -144,6 +188,6 @@ export function useInventoryData(role) {
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
-    produceUnit, cancelTransaction, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
+    produceUnit, cancelTransaction, pickLine, unpickLine, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
   };
 }

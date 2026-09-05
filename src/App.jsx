@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2 } from 'lucide-react';
+import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
@@ -14,6 +14,7 @@ import { FloorView } from './views/FloorView';
 import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
 import { ReportView } from './views/ReportView';
+import { PickQueueView } from './views/PickQueueView';
 import { SettingsView } from './views/SettingsView';
 
 export default function App() {
@@ -58,6 +59,7 @@ function Workspace({ profile, role, signOut, userId }) {
   useEffect(() => { if (role !== 'admin' && view === 'report') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'settings') setView('floor'); }, [role, view]);
   useEffect(() => { if (role === 'staff' && view === 'stock') setView('floor'); }, [role, view]);
+  useEffect(() => { if (role !== 'admin' && view === 'pick') setView('floor'); }, [role, view]);
 
   async function handleProduce(model, orderRef, staffName) {
     const { error } = await inv.produceUnit(model, orderRef, staffName, userId);
@@ -69,6 +71,9 @@ function Workspace({ profile, role, signOut, userId }) {
     if (error) showToast(error, 'warn');
     else showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
     setCancelTx(null);
+  }
+  async function handlePick(tx, materialId) {
+    return inv.pickLine(tx, materialId, userId);
   }
   async function handleSaveMaterial(m) {
     await inv.saveMaterial(m);
@@ -95,7 +100,7 @@ function Workspace({ profile, role, signOut, userId }) {
   if (inv.loading) return <CenteredMsg text="กำลังโหลดข้อมูลสต๊อก..." />;
 
   const navItems = role === 'admin'
-    ? [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'stock', label: 'คลัง', icon: Settings }, { key: 'report', label: 'รายงาน', icon: ClipboardList }]
+    ? [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'pick', label: 'คิวเบิก', icon: ListChecks }, { key: 'stock', label: 'คลัง', icon: Settings }, { key: 'report', label: 'รายงาน', icon: ClipboardList }]
     : role === 'purchasing'
       ? [{ key: 'stock', label: 'คลัง', icon: Settings }]
       : [{ key: 'floor', label: 'ผลิต', icon: Package }]; // staff: no stock tab
@@ -150,6 +155,9 @@ function Workspace({ profile, role, signOut, userId }) {
           {view === 'floor' && role === 'staff' && (
             <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
           )}
+          {view === 'pick' && role === 'admin' && (
+            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onPick={handlePick} />
+          )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}
               onEdit={setEditingMaterial} onAdd={() => setShowAddMaterial(true)} onRestock={setRestockMaterial} sheetsWebhookUrl={webhookUrl} />
@@ -180,9 +188,13 @@ function Workspace({ profile, role, signOut, userId }) {
             <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 10 }}>
               รุ่น <b style={{ color: C.text }}>{cancelTx.model_name}</b> · ผู้กดผลิต <b style={{ color: C.text }}>{cancelTx.staff_name}</b>
             </div>
-            <div style={{ fontSize: 12.5, marginBottom: 10 }}>ระบบจะคืนวัตถุดิบต่อไปนี้เข้าคลัง:</div>
+            <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+              {cancelTx.bom_snapshot.some(b => b.picked)
+                ? 'ระบบจะคืนวัตถุดิบที่หยิบไปแล้วต่อไปนี้เข้าคลัง (ส่วนที่ยังไม่ได้หยิบไม่ต้องคืน เพราะยังไม่เคยหักออกไป):'
+                : 'ออเดอร์นี้ยังไม่ได้หยิบวัตถุดิบเลย ยกเลิกได้โดยไม่ต้องคืนสต๊อกอะไร'}
+            </div>
             <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 14 }}>
-              {cancelTx.bom_snapshot.map(b => (
+              {cancelTx.bom_snapshot.filter(b => b.picked).map(b => (
                 <div key={b.material_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 12, borderBottom: `1px solid ${C.line}` }}>
                   <span>{b.material_name}</span>
                   <span style={{ ...mono, color: C.teal }}>+{b.qty} {b.unit}</span>
