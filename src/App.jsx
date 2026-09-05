@@ -86,8 +86,8 @@ function Workspace({ profile, role, signOut, userId }) {
     else showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
     setCancelTx(null);
   }
-  async function handlePick(tx, materialId) {
-    return inv.pickLine(tx, materialId, userId);
+  async function handleBulkPick(materialId) {
+    return inv.bulkPickMaterial(materialId, userId);
   }
   async function handleSaveMaterial(m) {
     await inv.saveMaterial(m);
@@ -170,7 +170,7 @@ function Workspace({ profile, role, signOut, userId }) {
             <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
           )}
           {view === 'pick' && role === 'admin' && (
-            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onPick={handlePick} />
+            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onBulkPick={handleBulkPick} />
           )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}

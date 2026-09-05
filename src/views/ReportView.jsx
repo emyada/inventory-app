@@ -6,7 +6,7 @@ import { toCSV, downloadCSV } from '../utils/csv';
 import { sendToGoogleSheet } from '../utils/sheets';
 
 export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
-  const [from, setFrom] = useState(monthStartStr());
+  const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState('');

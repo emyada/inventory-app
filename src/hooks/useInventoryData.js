@@ -98,6 +98,35 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
+  // One tick marks a material picked across EVERY open order that still needs
+  // it — instead of ticking the same material once per order. Still writes a
+  // separate stock_log line per order underneath, so month-end reconciliation
+  // against the master plan stays accurate down to the individual order code.
+  async function bulkPickMaterial(materialId, userId, onProgress) {
+    const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
+    if (affected.length === 0) return { error: null };
+    const lines = affected.map(t => ({ tx: t, line: t.bom_snapshot.find(b => b.material_id === materialId) }));
+    const totalQty = lines.reduce((s, { line }) => s + line.qty, 0);
+    const m = materialsById[materialId];
+    if (!m || m.qty < totalQty) {
+      return { error: `${lines[0].line.material_name} ไม่พอในคลัง (มี ${m?.qty ?? 0} ${lines[0].line.unit}, ต้องการรวม ${totalQty})` };
+    }
+    let done = 0;
+    for (const { tx, line } of lines) {
+      const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: true } : b);
+      await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id);
+      done++; onProgress?.(done, lines.length);
+      void line;
+    }
+    await supabase.from('materials').update({ qty: m.qty - totalQty }).eq('id', materialId);
+    await supabase.from('stock_log').insert(lines.map(({ tx, line }) => ({
+      type: 'out', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
+      order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
+    })));
+    await loadAll();
+    return { error: null };
+  }
+
   async function unpickLine(tx, materialId, userId) {
     const line = tx.bom_snapshot.find(b => b.material_id === materialId);
     if (!line || !line.picked) return { error: null };
@@ -188,6 +217,6 @@ export function useInventoryData(role) {
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
-    produceUnit, cancelTransaction, pickLine, unpickLine, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
+    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
   };
 }

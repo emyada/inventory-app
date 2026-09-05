@@ -59,7 +59,7 @@ function ChipInput({ codes, setCodes }) {
 }
 
 export function ProduceForm({ model, materialsById, onConfirm, onConfirmBatch, onClose }) {
-  const isSleeplug = model.category === 'Sleeplug';
+  const isSleeplug = /sleep/i.test(model.category || '');
   const [batchMode, setBatchMode] = useState(false);
   const [orderRef, setOrderRef] = useState('');
   const [codes, setCodes] = useState([]);
