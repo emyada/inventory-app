@@ -66,6 +66,20 @@ function Workspace({ profile, role, signOut, userId }) {
     if (error) showToast(error, 'warn');
     else { showToast(`บันทึกผลิต ${model.name} — ออเดอร์ ${orderRef} แล้ว`, 'ok'); setProduceModel(null); }
   }
+  async function handleProduceBatch(model, codes, staffName, onProgress) {
+    const failed = [];
+    for (let i = 0; i < codes.length; i++) {
+      const { error } = await inv.produceUnit(model, codes[i], staffName, userId);
+      if (error) failed.push(codes[i]);
+      onProgress?.(i + 1);
+    }
+    if (failed.length === 0) {
+      showToast(`ส่งคำขอ ${codes.length} ออเดอร์เรียบร้อยแล้ว`, 'ok');
+    } else {
+      showToast(`สำเร็จ ${codes.length - failed.length}/${codes.length} — ล้มเหลว: ${failed.join(', ')}`, 'warn');
+    }
+    setProduceModel(null);
+  }
   async function handleCancel(tx) {
     const { error } = await inv.cancelTransaction(tx, userId);
     if (error) showToast(error, 'warn');
@@ -181,7 +195,7 @@ function Workspace({ profile, role, signOut, userId }) {
         </div>
 
         {/* Modals */}
-        {produceModel && <ProduceForm model={produceModel} materialsById={inv.materialsById} onConfirm={handleProduce} onClose={() => setProduceModel(null)} />}
+        {produceModel && <ProduceForm model={produceModel} materialsById={inv.materialsById} onConfirm={handleProduce} onConfirmBatch={handleProduceBatch} onClose={() => setProduceModel(null)} />}
 
         {cancelTx && (
           <Modal onClose={() => setCancelTx(null)} title={`ยกเลิกออเดอร์ — ${cancelTx.order_ref}`}>
