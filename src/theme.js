@@ -13,7 +13,7 @@ export const C = {
 export const mono = { fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace" };
 export const sans = { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" };
 
-export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleeplug', 'ซ่อม'];
+export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'ซ่อม&อื่นๆ'];
 export const UNIT_OPTIONS = ['g', 'kg', 'ml', 'l', 'pcs', 'set', 'pack', 'ชิ้น', 'คู่', 'ม้วน', 'แผ่น', 'ห่อ', 'กล่อง', 'เมตร', 'อื่นๆ'];
 
 export const inputStyle = { width: '100%', background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 7, padding: '8px 10px', color: C.text, fontSize: 13, boxSizing: 'border-box' };
