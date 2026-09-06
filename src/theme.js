@@ -14,8 +14,8 @@ export const mono = { fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular
 export const sans = { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" };
 
 export const REPAIR_LABEL = 'ซ่อมและอื่นๆ';
-export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleeplug', REPAIR_LABEL];
-export const REPAIR_SUBTYPES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleeplug', 'อื่นๆ'];
+export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', REPAIR_LABEL];
+export const REPAIR_SUBTYPES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'อื่นๆ'];
 export function isRepairCategory(cat) { return /ซ่อม/.test(cat || ''); }
 export const UNIT_OPTIONS = ['g', 'kg', 'ml', 'l', 'pcs', 'set', 'pack', 'ชิ้น', 'คู่', 'ม้วน', 'แผ่น', 'ห่อ', 'กล่อง', 'เมตร', 'อื่นๆ'];
 
