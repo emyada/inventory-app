@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, PackagePlus, ChevronRight, History, ArrowDownCircle, ArrowUpCircle, Download, Send, Search } from 'lucide-react';
+import { Plus, PackagePlus, ChevronRight, ChevronDown, History, ArrowDownCircle, ArrowUpCircle, Download, Send, Search } from 'lucide-react';
 import { C, mono, btnGhost, tabBtn, tabBtnActive, monthStartStr, todayStr } from '../theme';
 import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
@@ -12,14 +12,26 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
   const [to, setTo] = useState(todayStr());
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
+  const [expanded, setExpanded] = useState(null); // material_id currently expanded, or null
 
   const filteredLog = stockLog.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
   const totalIn = filteredLog.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0);
   const totalOut = filteredLog.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
 
-  const byDate = {};
-  filteredLog.forEach(l => { const d = l.created_at.slice(0, 10); (byDate[d] = byDate[d] || []).push(l); });
-  const dates = Object.keys(byDate).sort().reverse();
+  // Group every entry by material — this is the whole point of the redesign:
+  // the same material showing up across many dates/orders now collapses into
+  // ONE row with running totals, instead of one row per event stretching the
+  // page. Tap a row to expand and see the individual dated entries beneath it.
+  const byMaterial = {};
+  filteredLog.forEach(l => {
+    const key = l.material_id || l.material_name;
+    if (!byMaterial[key]) byMaterial[key] = { name: l.material_name, unit: l.unit, in: 0, out: 0, entries: [] };
+    if (l.type === 'in') byMaterial[key].in += Number(l.amount); else byMaterial[key].out += Number(l.amount);
+    byMaterial[key].entries.push(l);
+  });
+  const materialRows = Object.entries(byMaterial)
+    .map(([id, v]) => ({ id, ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
   const rowsForExport = () => filteredLog.map(l => ({
     วันที่: l.created_at.slice(0, 10), ประเภท: l.type === 'in' ? 'รับเข้า' : 'เบิกออก',
@@ -99,26 +111,49 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
               <div style={{ fontSize: 18, fontWeight: 800, color: C.red, ...mono }}>-{totalOut}</div>
             </div>
           </div>
-          {dates.length === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีรายการในช่วงนี้</div>}
-          {dates.map(date => (
-            <div key={date} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11.5, color: C.textDim, fontWeight: 700, marginBottom: 6, ...mono }}>{date}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {byDate[date].map(l => (
-                  <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: '7px 10px' }}>
-                    {l.type === 'in' ? <ArrowDownCircle size={14} color={C.teal} /> : <ArrowUpCircle size={14} color={C.red} />}
+
+          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>แตะแต่ละรายการเพื่อดูรายละเอียดย่อย</div>
+
+          {materialRows.length === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีรายการในช่วงนี้</div>}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {materialRows.map(r => {
+              const isOpen = expanded === r.id;
+              return (
+                <div key={r.id} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, overflow: 'hidden' }}>
+                  <button onClick={() => setExpanded(isOpen ? null : r.id)}
+                    style={{ all: 'unset', display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box', padding: '10px 12px', cursor: 'pointer' }}>
+                    <ChevronDown size={14} color={C.textDim} style={{ flexShrink: 0, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.material_name}</div>
-                      <div style={{ fontSize: 10.5, color: C.textDim }}>{l.order_ref}{l.staff_name ? ` · ${l.staff_name}` : ''}</div>
+                      <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                      <div style={{ fontSize: 10.5, color: C.textDim }}>{r.entries.length} รายการ</div>
                     </div>
-                    <div style={{ ...mono, fontSize: 12.5, fontWeight: 700, color: l.type === 'in' ? C.teal : C.red, flexShrink: 0 }}>
-                      {l.type === 'in' ? '+' : '-'}{l.amount} {l.unit}
+                    <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+                      {r.in > 0 && <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: C.teal }}>+{r.in}</span>}
+                      {r.out > 0 && <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: C.red }}>-{r.out}</span>}
+                      <span style={{ fontSize: 11, color: C.textDim }}>{r.unit}</span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  </button>
+                  {isOpen && (
+                    <div style={{ borderTop: `1px solid ${C.line}`, padding: '4px 12px 8px' }}>
+                      {r.entries.map(l => (
+                        <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>
+                          {l.type === 'in' ? <ArrowDownCircle size={13} color={C.teal} /> : <ArrowUpCircle size={13} color={C.red} />}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, color: C.textDim, ...mono }}>{l.created_at.slice(0, 10)}</div>
+                            <div style={{ fontSize: 11, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.order_ref}{l.staff_name ? ` · ${l.staff_name}` : ''}</div>
+                          </div>
+                          <div style={{ ...mono, fontSize: 12, fontWeight: 700, color: l.type === 'in' ? C.teal : C.red, flexShrink: 0 }}>
+                            {l.type === 'in' ? '+' : '-'}{l.amount} {l.unit}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

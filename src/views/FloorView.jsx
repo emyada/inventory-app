@@ -1,8 +1,23 @@
 import React from 'react';
-import { Plus, AlertTriangle, Pencil } from 'lucide-react';
-import { C, btnGhost } from '../theme';
+import { Plus, AlertTriangle, Pencil, Wrench } from 'lucide-react';
+import { C, btnGhost, isRepairCategory } from '../theme';
 
-export function FloorView({ category, models, materialsById, onProduce, role, onAddModel, onEditModel }) {
+export function FloorView({ category, models, materialsById, onProduce, role, onAddModel, onEditModel, onRepairRequest }) {
+  if (isRepairCategory(category)) {
+    return (
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{category}</div>
+        <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 16, lineHeight: 1.6 }}>
+          หมวดนี้ไม่มีรุ่นสำเร็จรูป — แต่ละเคสยื่นคำขอแยกกันเอง พร้อมระบุสาเหตุและเลือกวัตถุดิบเองได้อิสระ
+        </div>
+        <button onClick={onRepairRequest}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', background: C.amber, color: C.bg, border: 'none', borderRadius: 12, padding: '16px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+          <Wrench size={16} /> ยื่นคำขอเบิก (ซ่อม/เคสพิเศษ)
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

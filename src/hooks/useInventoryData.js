@@ -57,11 +57,11 @@ export function useInventoryData(role) {
 
   const materialsById = Object.fromEntries(materials.map(m => [m.id, m]));
 
-  async function produceUnit(model, orderRef, staffName, userId) {
+  async function produceUnit(model, orderRef, staffName, userId, note = '') {
     // This now only files a REQUEST — nothing is deducted yet. The stock lead
     // picks each material line individually (pickLine) once it's physically
     // handed over, and that's the moment stock actually gets deducted.
-    const bomSnapshot = model.bom.map(b => ({
+    const bomSnapshot = (model.bom || []).map(b => ({
       material_id: b.material_id,
       material_name: materialsById[b.material_id]?.name || '',
       unit: materialsById[b.material_id]?.unit || '',
@@ -69,8 +69,8 @@ export function useInventoryData(role) {
       picked: false,
     }));
     const { error } = await supabase.from('transactions').insert({
-      model_id: model.id, model_name: model.name, category: model.category,
-      order_ref: orderRef, staff_name: staffName, bom_snapshot: bomSnapshot, created_by: userId,
+      model_id: model.id || null, model_name: model.name, category: model.category,
+      order_ref: orderRef, staff_name: staffName, bom_snapshot: bomSnapshot, created_by: userId, note,
     });
     if (error) return { error: error.message };
     await loadAll();

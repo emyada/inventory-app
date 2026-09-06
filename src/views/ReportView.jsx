@@ -17,7 +17,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
   const orderedCats = CATEGORIES.filter(c => byCategory[c]);
 
   const rowsForExport = () => filtered.map(t => ({
-    วันที่: t.created_at.slice(0, 10), หมวด: t.category, รุ่น: t.model_name, ออเดอร์: t.order_ref, ช่างผู้ผลิต: t.staff_name,
+    วันที่: t.created_at.slice(0, 10), หมวด: t.category, รุ่น: t.model_name, ออเดอร์: t.order_ref, ช่างผู้ผลิต: t.staff_name, สาเหตุ: t.note || '',
   }));
 
   async function handleSendToSheet() {
@@ -34,7 +34,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
       </div>
       <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
       <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
-        <button onClick={() => downloadCSV(`production-report_${from}_to_${to}.csv`, toCSV(rowsForExport(), ['วันที่', 'หมวด', 'รุ่น', 'ออเดอร์', 'ช่างผู้ผลิต']))} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>
+        <button onClick={() => downloadCSV(`production-report_${from}_to_${to}.csv`, toCSV(rowsForExport(), ['วันที่', 'หมวด', 'รุ่น', 'ออเดอร์', 'ช่างผู้ผลิต', 'สาเหตุ']))} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>
           <Download size={13} style={{ marginRight: 4 }} /> ส่งออก CSV
         </button>
         <button onClick={handleSendToSheet} disabled={sending} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>
@@ -70,6 +70,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600 }}>{t.model_name}</div>
                     <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref} · ช่าง {t.staff_name} · {t.created_at.slice(0, 10)}</div>
+                    {t.note && <div style={{ fontSize: 10.5, color: C.amber, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>เหตุผล: {t.note}</div>}
                   </div>
                   <button onClick={() => onCancel(t)} style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 7, padding: 5, color: C.red, cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                     <Trash2 size={12} />

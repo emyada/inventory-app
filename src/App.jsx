@@ -3,13 +3,14 @@ import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizon
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
-import { C, sans, mono, CATEGORIES, btnPrimary } from './theme';
+import { C, sans, mono, CATEGORIES, REPAIR_LABEL, btnPrimary } from './theme';
 import Login from './components/Login';
 import { Modal } from './components/Modal';
 import { ProduceForm } from './components/ProduceForm';
 import { MaterialForm } from './components/MaterialForm';
 import { RestockForm } from './components/RestockForm';
 import { ModelForm } from './components/ModelForm';
+import { RepairRequestForm } from './components/RepairRequestForm';
 import { FloorView } from './views/FloorView';
 import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
@@ -42,6 +43,7 @@ function Workspace({ profile, role, signOut, userId }) {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [restockMaterial, setRestockMaterial] = useState(null);
   const [editingModel, setEditingModel] = useState(null);
+  const [showRepairForm, setShowRepairForm] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
 
   const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 2500); };
@@ -79,6 +81,12 @@ function Workspace({ profile, role, signOut, userId }) {
       showToast(`สำเร็จ ${codes.length - failed.length}/${codes.length} — ล้มเหลว: ${failed.join(', ')}`, 'warn');
     }
     setProduceModel(null);
+  }
+  async function handleRepairRequest({ orderRef, subType, note, staffName, bom }) {
+    const pseudoModel = { id: null, name: subType, category: REPAIR_LABEL, bom };
+    const { error } = await inv.produceUnit(pseudoModel, orderRef, staffName, userId, note);
+    if (error) showToast(error, 'warn');
+    else { showToast(`ส่งคำขอเบิก (ซ่อม) — ${orderRef} แล้ว`, 'ok'); setShowRepairForm(false); }
   }
   async function handleCancel(tx) {
     const { error } = await inv.cancelTransaction(tx, userId);
@@ -164,7 +172,8 @@ function Workspace({ profile, role, signOut, userId }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 14, boxSizing: 'border-box' }}>
           {view === 'floor' && (
             <FloorView category={activeCat} models={modelsInCat} materialsById={inv.materialsById}
-              onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel} />
+              onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel}
+              onRepairRequest={() => setShowRepairForm(true)} />
           )}
           {view === 'floor' && role === 'staff' && (
             <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
@@ -196,6 +205,10 @@ function Workspace({ profile, role, signOut, userId }) {
 
         {/* Modals */}
         {produceModel && <ProduceForm model={produceModel} materialsById={inv.materialsById} onConfirm={handleProduce} onConfirmBatch={handleProduceBatch} onClose={() => setProduceModel(null)} />}
+
+        {showRepairForm && (
+          <RepairRequestForm materials={inv.materials} onConfirm={handleRepairRequest} onClose={() => setShowRepairForm(false)} />
+        )}
 
         {cancelTx && (
           <Modal onClose={() => setCancelTx(null)} title={`ยกเลิกออเดอร์ — ${cancelTx.order_ref}`}>
