@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks } from 'lucide-react';
+import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
@@ -16,6 +16,7 @@ import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
 import { ReportView } from './views/ReportView';
 import { PickQueueView } from './views/PickQueueView';
+import { RecheckView } from './views/RecheckView';
 import { SettingsView } from './views/SettingsView';
 
 export default function App() {
@@ -61,6 +62,7 @@ function Workspace({ profile, role, signOut, userId }) {
   useEffect(() => { if (role !== 'admin' && view === 'report') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'settings') setView('floor'); }, [role, view]);
   useEffect(() => { if (role === 'staff' && view === 'stock') setView('floor'); }, [role, view]);
+  useEffect(() => { if (role !== 'staff' && view === 'recheck') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'pick') setView('floor'); }, [role, view]);
 
   async function handleProduce(model, orderRef, staffName) {
@@ -97,6 +99,9 @@ function Workspace({ profile, role, signOut, userId }) {
   async function handleBulkPick(materialId) {
     return inv.bulkPickMaterial(materialId, userId);
   }
+  async function handleConfirmReceived(tx, materialId) {
+    return inv.confirmReceived(tx, materialId);
+  }
   async function handleSaveMaterial(m) {
     await inv.saveMaterial(m);
     setEditingMaterial(null); setShowAddMaterial(false);
@@ -125,7 +130,7 @@ function Workspace({ profile, role, signOut, userId }) {
     ? [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'pick', label: 'คิวเบิก', icon: ListChecks }, { key: 'stock', label: 'คลัง', icon: Settings }, { key: 'report', label: 'รายงาน', icon: ClipboardList }]
     : role === 'purchasing'
       ? [{ key: 'stock', label: 'คลัง', icon: Settings }]
-      : [{ key: 'floor', label: 'ผลิต', icon: Package }]; // staff: no stock tab
+      : [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'recheck', label: 'เช็ครับของ', icon: ClipboardCheck }]; // staff: no stock tab
 
   const modelsInCat = inv.models.filter(m => m.category === activeCat);
 
@@ -180,6 +185,9 @@ function Workspace({ profile, role, signOut, userId }) {
           )}
           {view === 'pick' && role === 'admin' && (
             <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onBulkPick={handleBulkPick} />
+          )}
+          {view === 'recheck' && role === 'staff' && (
+            <RecheckView transactions={inv.transactions} userId={userId} onConfirm={handleConfirmReceived} />
           )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}

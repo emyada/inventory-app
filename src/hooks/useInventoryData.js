@@ -67,6 +67,7 @@ export function useInventoryData(role) {
       unit: materialsById[b.material_id]?.unit || '',
       qty: b.qty,
       picked: false,
+      received: false,
     }));
     const { error } = await supabase.from('transactions').insert({
       model_id: model.id || null, model_name: model.name, category: model.category,
@@ -145,6 +146,22 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
+  // Staff-side confirmation that they physically received this line — a
+  // second, independent checklist from the stock lead's "picked" one. Doesn't
+  // touch stock or logs at all; it's purely a cross-check to catch mistakes
+  // on either side (wrong item handed over, wrong quantity counted, etc).
+  async function confirmReceived(tx, materialId) {
+    const line = tx.bom_snapshot.find(b => b.material_id === materialId);
+    if (!line || line.received) return { error: null };
+    const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, received: true } : b);
+    const { data: updated, error } = await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id).select();
+    if (error || !updated || updated.length === 0) {
+      return { error: 'ยืนยันไม่สำเร็จ (สิทธิ์ไม่พอ หรือมีปัญหาการเชื่อมต่อ)' };
+    }
+    await loadAll();
+    return { error: null };
+  }
+
   async function cancelTransaction(tx, userId) {
     // Delete first and check what actually got removed — RLS silently allows a
     // delete call to "succeed" with zero rows affected if the policy blocks it
@@ -217,6 +234,6 @@ export function useInventoryData(role) {
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
-    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
+    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, confirmReceived, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
   };
 }
