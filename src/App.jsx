@@ -107,8 +107,8 @@ function Workspace({ profile, role, signOut, userId }) {
     setEditingMaterial(null); setShowAddMaterial(false);
     showToast(m.id ? 'บันทึกการแก้ไขแล้ว' : `เพิ่ม ${m.name} เข้าคลังแล้ว`, 'ok');
   }
-  async function handleRestock(materialId, amount) {
-    await inv.restock(materialId, amount, userId, profile?.full_name || '');
+  async function handleRestock(materialId, amount, staffName) {
+    await inv.restock(materialId, amount, userId, staffName);
     setRestockMaterial(null);
     showToast(`รับเข้าคลังแล้ว +${amount}`, 'ok');
   }

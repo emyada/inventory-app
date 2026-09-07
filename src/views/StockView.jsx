@@ -15,13 +15,30 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
   const [expanded, setExpanded] = useState(null); // material_id currently expanded, or null
 
   const filteredLog = stockLog.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
-  const totalIn = filteredLog.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0);
-  const totalOut = filteredLog.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
 
-  // Group every entry by material — this is the whole point of the redesign:
-  // the same material showing up across many dates/orders now collapses into
-  // ONE row with running totals, instead of one row per event stretching the
-  // page. Tap a row to expand and see the individual dated entries beneath it.
+  // Cancelling an order writes a compensating "ยกเลิก: <order_ref>" entry —
+  // computed across the FULL log (not just the selected range) so a pick and
+  // its later cancellation still pair up correctly even if that happened on
+  // a different day, or outside the currently selected date window.
+  const cancelledOrderRefs = new Set(
+    stockLog.filter(l => l.order_ref?.startsWith('ยกเลิก:'))
+      .map(l => l.order_ref.replace(/^ยกเลิก:\s*/, ''))
+  );
+  const isCancelNoise = (l) => l.order_ref?.startsWith('ยกเลิก:') || cancelledOrderRefs.has(l.order_ref);
+
+  // Real restocks only (excludes the "in" side of a cancellation reversal) —
+  // and real net production consumption only (excludes any "out" whose order
+  // was later cancelled). Shown as event COUNTS, not summed quantities,
+  // because summing raw numbers across materials with different units
+  // (grams, ml, pcs...) into one figure is meaningless either way.
+  const restockCount = filteredLog.filter(l => l.type === 'in' && l.order_ref === 'ซื้อเข้า').length;
+  const consumeCount = filteredLog.filter(l => l.type === 'out' && !isCancelNoise(l)).length;
+
+  // Group every entry by material — the same material across many dates/
+  // orders collapses into ONE row with running totals, instead of one row
+  // per event stretching the page. Tap a row to expand and see the individual
+  // dated entries beneath it. This view intentionally shows EVERYTHING,
+  // including cancellations, as the full raw audit trail inside the app.
   const byMaterial = {};
   filteredLog.forEach(l => {
     const key = l.material_id || l.material_name;
@@ -33,7 +50,11 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     .map(([id, v]) => ({ id, ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
-  const rowsForExport = () => filteredLog.map(l => ({
+  // Exported reports leave cancellation noise out entirely — a cancelled
+  // order nets to zero, so neither the original withdrawal nor its reversal
+  // is meaningful for accounting reconciliation. The full trail (including
+  // cancellations) still lives in the app's own history above.
+  const rowsForExport = () => filteredLog.filter(l => !isCancelNoise(l)).map(l => ({
     วันที่: l.created_at.slice(0, 10), ประเภท: l.type === 'in' ? 'รับเข้า' : 'เบิกออก',
     วัตถุดิบ: l.material_name, จำนวน: l.amount, หน่วย: l.unit, อ้างอิง: l.order_ref, ผู้ทำรายการ: l.staff_name,
   }));
@@ -101,18 +122,24 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
             </button>
           </div>
           {sendMsg && <div style={{ fontSize: 11.5, color: sendMsg.includes('แล้ว') ? C.teal : C.red, marginBottom: 10 }}>{sendMsg}</div>}
+          <div style={{ fontSize: 10, color: C.textDim, marginBottom: 10, lineHeight: 1.5 }}>
+            (การส่งออกไม่รวมรายการที่ยกเลิกไปแล้ว — ดูรายการยกเลิกได้จากประวัติด้านล่างในแอปเท่านั้น)
+          </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <div style={{ flex: 1, background: 'rgba(63,167,150,0.1)', border: `1px solid ${C.teal}`, borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>รับเข้ารวม</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.teal, ...mono }}>+{totalIn}</div>
+              <div style={{ fontSize: 10.5, color: C.textDim }}>รับเข้า (ซื้อเข้าจริง)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.teal, ...mono }}>{restockCount} ครั้ง</div>
             </div>
             <div style={{ flex: 1, background: 'rgba(217,119,87,0.1)', border: `1px solid ${C.red}`, borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>เบิกออกรวม</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.red, ...mono }}>-{totalOut}</div>
+              <div style={{ fontSize: 10.5, color: C.textDim }}>เบิกออก (ผลิตจริง)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.red, ...mono }}>{consumeCount} ครั้ง</div>
             </div>
           </div>
+          <div style={{ fontSize: 10, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
+            (นับเป็น "จำนวนครั้ง" ไม่ใช่ผลรวมจำนวนสินค้า เพราะวัตถุดิบแต่ละตัวหน่วยไม่เหมือนกัน บวกรวมกันเป็นตัวเลขเดียวไม่มีความหมาย — ดูยอดจริงแยกตามวัตถุดิบแต่ละตัวได้ด้านล่าง)
+          </div>
 
-          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>แตะแต่ละรายการเพื่อดูรายละเอียดย่อย</div>
+          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>แตะแต่ละรายการเพื่อดูรายละเอียดย่อย (รวมรายการที่ยกเลิกด้วย เพื่อเป็นประวัติเต็ม)</div>
 
           {materialRows.length === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีรายการในช่วงนี้</div>}
 
