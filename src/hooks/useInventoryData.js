@@ -63,13 +63,17 @@ export function useInventoryData(role) {
     // and full history, and stays correct even if another device just
     // created the same code moments ago. Skipped entirely for the repair/
     // misc category, where reusing the same customer code is normal and
-    // expected (repeat repair visits, R&D test withdrawals, etc).
+    // expected (repeat repair visits, R&D test withdrawals, etc). For every
+    // other category, the same code is allowed across DIFFERENT models —
+    // e.g. one person withdraws drivers under one CIEM model while another
+    // withdraws packaging under a different model, same customer code — only
+    // an exact repeat of the same code AND same model is blocked.
     const isRepair = /ซ่อม/.test(model.category || '');
-    if (!isRepair) {
-      const { data: dupes } = await supabase.from('transactions').select('order_ref, created_at')
-        .ilike('order_ref', orderRef.trim()).neq('category', 'ซ่อมและอื่นๆ').limit(1);
+    if (!isRepair && model.id) {
+      const { data: dupes } = await supabase.from('transactions').select('order_ref, model_name, created_at')
+        .ilike('order_ref', orderRef.trim()).eq('model_id', model.id).limit(1);
       if (dupes && dupes.length > 0) {
-        return { error: `รหัส/ชื่อลูกค้า "${orderRef.trim()}" มีอยู่ในระบบแล้ว (เคยเบิกไว้เมื่อ ${dupes[0].created_at.slice(0, 10)}) — กรุณาใช้รหัสอื่น` };
+        return { error: `รหัส/ชื่อลูกค้า "${orderRef.trim()}" เคยเบิกรุ่น "${dupes[0].model_name}" นี้ไปแล้วเมื่อ ${dupes[0].created_at.slice(0, 10)} — ถ้าเป็นออเดอร์เดียวกันแต่คนละรุ่น/ขั้นตอน ใช้รหัสนี้ต่อกับรุ่นอื่นได้ปกติ` };
       }
     }
 

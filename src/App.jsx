@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck, RefreshCw } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
@@ -12,7 +12,6 @@ import { RestockForm } from './components/RestockForm';
 import { ModelForm } from './components/ModelForm';
 import { RepairRequestForm } from './components/RepairRequestForm';
 import { FloorView } from './views/FloorView';
-import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
 import { ReportView } from './views/ReportView';
 import { PickQueueView } from './views/PickQueueView';
@@ -46,8 +45,42 @@ function Workspace({ profile, role, signOut, userId }) {
   const [editingModel, setEditingModel] = useState(null);
   const [showRepairForm, setShowRepairForm] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [pullDist, setPullDist] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef(null);
+  const touchStartY = useRef(null);
+  const PULL_THRESHOLD = 60;
+  const PULL_MAX = 90;
 
   const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 2500); };
+
+  async function handleManualRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    await inv.reload();
+    setRefreshing(false);
+    showToast('อัปเดตข้อมูลแล้ว', 'ok');
+  }
+  function handleTouchStart(e) {
+    if (scrollRef.current && scrollRef.current.scrollTop === 0) touchStartY.current = e.touches[0].clientY;
+  }
+  function handleTouchMove(e) {
+    if (touchStartY.current === null) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0 && scrollRef.current && scrollRef.current.scrollTop === 0) {
+      setPullDist(Math.min(delta * 0.5, PULL_MAX));
+    }
+  }
+  async function handleTouchEnd() {
+    if (touchStartY.current === null) return;
+    touchStartY.current = null;
+    if (pullDist >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      await inv.reload();
+      setRefreshing(false);
+    }
+    setPullDist(0);
+  }
 
   useEffect(() => {
     supabase.from('app_settings').select('*').eq('key', 'sheets_webhook_url').maybeSingle()
@@ -96,11 +129,11 @@ function Workspace({ profile, role, signOut, userId }) {
     else showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
     setCancelTx(null);
   }
-  async function handleBulkPick(materialId) {
-    return inv.bulkPickMaterial(materialId, userId);
+  async function handleBulkPickBatch(materialIds) {
+    return inv.bulkPickMaterials(materialIds, userId);
   }
-  async function handleConfirmReceived(tx, materialId) {
-    return inv.confirmReceived(tx, materialId);
+  async function handleConfirmReceivedBatch(items) {
+    return inv.confirmReceivedBatch(items);
   }
   async function handleSaveMaterial(m) {
     await inv.saveMaterial(m);
@@ -152,6 +185,10 @@ function Workspace({ profile, role, signOut, userId }) {
                 <SlidersHorizontal size={14} />
               </button>
             )}
+            <button onClick={handleManualRefresh} disabled={refreshing} title="รีเฟรชข้อมูล"
+              style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, color: C.textDim, cursor: 'pointer' }}>
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            </button>
             <button onClick={signOut} style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, color: C.textDim, cursor: 'pointer' }}>
               <LogOut size={14} />
             </button>
@@ -174,20 +211,24 @@ function Workspace({ profile, role, signOut, userId }) {
         </div>
 
         {/* Main content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 14, boxSizing: 'border-box' }}>
+        <div ref={scrollRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+          style={{ flex: 1, overflowY: 'auto', padding: 14, boxSizing: 'border-box', position: 'relative' }}>
+          {(pullDist > 0 || refreshing) && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', paddingTop: 4, height: refreshing ? 36 : pullDist, overflow: 'hidden', transition: refreshing ? 'height 0.15s' : 'none' }}>
+              <RefreshCw size={18} color={C.textDim} className={refreshing ? 'animate-spin' : ''}
+                style={{ transform: refreshing ? 'none' : `rotate(${Math.min(pullDist / PULL_THRESHOLD, 1) * 360}deg)`, opacity: Math.min(pullDist / PULL_THRESHOLD, 1) }} />
+            </div>
+          )}
           {view === 'floor' && (
             <FloorView category={activeCat} models={modelsInCat} materialsById={inv.materialsById}
               onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel}
               onRepairRequest={() => setShowRepairForm(true)} />
           )}
-          {view === 'floor' && role === 'staff' && (
-            <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
-          )}
           {view === 'pick' && role === 'admin' && (
-            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onBulkPick={handleBulkPick} />
+            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onBulkPickBatch={handleBulkPickBatch} />
           )}
           {view === 'recheck' && role === 'staff' && (
-            <RecheckView transactions={inv.transactions} userId={userId} onConfirm={handleConfirmReceived} />
+            <RecheckView transactions={inv.transactions} userId={userId} onConfirmBatch={handleConfirmReceivedBatch} onCancel={setCancelTx} />
           )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}
