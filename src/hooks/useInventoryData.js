@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { todayStr } from '../theme';
 
@@ -9,6 +9,11 @@ export function useInventoryData(role) {
   const [stockLog, setStockLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // While true, incoming realtime change events are ignored — set during any
+  // local batch of writes (several DB calls in a row for one logical action)
+  // so mid-batch realtime pings don't trigger a flurry of reloads/flicker.
+  // The batch's own final loadAll() at the end is what actually refreshes.
+  const suppressRealtimeRef = useRef(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -42,15 +47,18 @@ export function useInventoryData(role) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Realtime: any device's change refreshes everyone else automatically.
+  // Realtime: any device's change refreshes everyone else automatically —
+  // except while WE are mid-way through our own multi-step batch write (see
+  // suppressRealtimeRef above), to avoid flickering through partial state.
   useEffect(() => {
+    const handleRealtimeChange = () => { if (!suppressRealtimeRef.current) loadAll(); };
     const channel = supabase
       .channel('inventory-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'model_bom' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_log' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, handleRealtimeChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, handleRealtimeChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'model_bom' }, handleRealtimeChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, handleRealtimeChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_log' }, handleRealtimeChange)
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [loadAll]);
@@ -58,6 +66,7 @@ export function useInventoryData(role) {
   const materialsById = Object.fromEntries(materials.map(m => [m.id, m]));
 
   async function produceUnit(model, orderRef, staffName, userId, note = '') {
+    suppressRealtimeRef.current = true;
     // Duplicate check runs against the LIVE database (not local state) right
     // before inserting, so it catches duplicates against both open orders
     // and full history, and stays correct even if another device just
@@ -100,10 +109,12 @@ export function useInventoryData(role) {
       return { error: error.message };
     }
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { error: null };
   }
 
   async function pickLine(tx, materialId, userId) {
+    suppressRealtimeRef.current = true;
     const line = tx.bom_snapshot.find(b => b.material_id === materialId);
     if (!line || line.picked) return { error: null };
     const m = materialsById[materialId];
@@ -121,6 +132,7 @@ export function useInventoryData(role) {
       order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
     });
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { error: null };
   }
 
@@ -157,6 +169,7 @@ export function useInventoryData(role) {
   // in one action — only reloads/re-renders ONCE at the end instead of once
   // per tick, so the screen doesn't jump around while ticking things off.
   async function bulkPickMaterials(materialIds, userId, onProgress) {
+    suppressRealtimeRef.current = true;
     const errors = [];
     let done = 0;
     for (const materialId of materialIds) {
@@ -165,10 +178,12 @@ export function useInventoryData(role) {
       done++; onProgress?.(done, materialIds.length);
     }
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { errors };
   }
 
   async function unpickLine(tx, materialId, userId) {
+    suppressRealtimeRef.current = true;
     const line = tx.bom_snapshot.find(b => b.material_id === materialId);
     if (!line || !line.picked) return { error: null };
     const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: false } : b);
@@ -183,6 +198,7 @@ export function useInventoryData(role) {
       order_ref: `ยกเลิกการหยิบ: ${tx.order_ref}`, staff_name: tx.staff_name, created_by: userId,
     });
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { error: null };
   }
 
@@ -205,6 +221,7 @@ export function useInventoryData(role) {
   // Batch version, same idea as bulkPickMaterials: stage several confirmations
   // in the UI, submit them all in one action, one reload at the end.
   async function confirmReceivedBatch(items, onProgress) {
+    suppressRealtimeRef.current = true;
     const errors = [];
     let done = 0;
     for (const { tx, materialId } of items) {
@@ -213,10 +230,12 @@ export function useInventoryData(role) {
       done++; onProgress?.(done, items.length);
     }
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { errors };
   }
 
   async function cancelTransaction(tx, userId) {
+    suppressRealtimeRef.current = true;
     // Delete first and check what actually got removed — RLS silently allows a
     // delete call to "succeed" with zero rows affected if the policy blocks it
     // (e.g. a staff member's 30-minute self-cancel window has expired, or it's
@@ -239,19 +258,25 @@ export function useInventoryData(role) {
       })));
     }
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { error: null };
   }
 
   async function saveMaterial(m) {
+    suppressRealtimeRef.current = true;
     if (m.id) await supabase.from('materials').update({ name: m.name, unit: m.unit, qty: m.qty }).eq('id', m.id);
     else await supabase.from('materials').insert({ name: m.name, unit: m.unit, qty: m.qty });
     await loadAll();
+    suppressRealtimeRef.current = false;
   }
   async function deleteMaterial(id) {
+    suppressRealtimeRef.current = true;
     await supabase.from('materials').delete().eq('id', id);
     await loadAll();
+    suppressRealtimeRef.current = false;
   }
   async function restock(materialId, amount, userId, staffName) {
+    suppressRealtimeRef.current = true;
     const m = materialsById[materialId];
     await supabase.from('materials').update({ qty: m.qty + amount }).eq('id', materialId);
     await supabase.from('stock_log').insert({
@@ -259,9 +284,11 @@ export function useInventoryData(role) {
       order_ref: 'ซื้อเข้า', staff_name: staffName, created_by: userId,
     });
     await loadAll();
+    suppressRealtimeRef.current = false;
   }
 
   async function saveModel(model) {
+    suppressRealtimeRef.current = true;
     let modelId = model.id;
     if (modelId) {
       await supabase.from('models').update({ name: model.name, category: model.category }).eq('id', modelId);
@@ -275,11 +302,14 @@ export function useInventoryData(role) {
       await supabase.from('model_bom').insert(model.bom.map(b => ({ model_id: modelId, material_id: b.material_id, qty: b.qty })));
     }
     await loadAll();
+    suppressRealtimeRef.current = false;
     return { error: null };
   }
   async function deleteModel(id) {
+    suppressRealtimeRef.current = true;
     await supabase.from('models').delete().eq('id', id);
     await loadAll();
+    suppressRealtimeRef.current = false;
   }
 
   const today = todayStr();

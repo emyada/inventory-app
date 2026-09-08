@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Check, Package, Users, Save } from 'lucide-react';
 import { C, mono } from '../theme';
 
@@ -30,12 +30,19 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     setStaged(s => s.includes(materialId) ? s.filter(id => id !== materialId) : [...s, materialId]);
   }
 
+  const processingRef = useRef(false);
   async function handleConfirm() {
+    if (processingRef.current) return; // hard synchronous guard against double-submit
+    processingRef.current = true;
     setConfirming(true);
-    const { errors } = await onBulkPickBatch(staged);
-    setConfirming(false);
-    setStaged([]);
-    if (errors.length) alert(errors.join('\n'));
+    try {
+      const { errors } = await onBulkPickBatch(staged);
+      setStaged([]);
+      if (errors.length) alert(errors.join('\n'));
+    } finally {
+      processingRef.current = false;
+      setConfirming(false);
+    }
   }
 
   return (

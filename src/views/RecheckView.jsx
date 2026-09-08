@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Check, Package, Save, Trash2, Clock } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
@@ -43,12 +43,19 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
     });
   }
 
+  const processingRef = useRef(false);
   async function handleConfirm() {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setConfirming(true);
-    const { errors } = await onConfirmBatch(staged.map(s => ({ tx: s.tx, materialId: s.materialId })));
-    setConfirming(false);
-    setStaged([]);
-    if (errors.length) alert(errors.join('\n'));
+    try {
+      const { errors } = await onConfirmBatch(staged.map(s => ({ tx: s.tx, materialId: s.materialId })));
+      setStaged([]);
+      if (errors.length) alert(errors.join('\n'));
+    } finally {
+      processingRef.current = false;
+      setConfirming(false);
+    }
   }
 
   return (
