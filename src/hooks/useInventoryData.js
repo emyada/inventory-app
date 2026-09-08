@@ -58,6 +58,21 @@ export function useInventoryData(role) {
   const materialsById = Object.fromEntries(materials.map(m => [m.id, m]));
 
   async function produceUnit(model, orderRef, staffName, userId, note = '') {
+    // Duplicate check runs against the LIVE database (not local state) right
+    // before inserting, so it catches duplicates against both open orders
+    // and full history, and stays correct even if another device just
+    // created the same code moments ago. Skipped entirely for the repair/
+    // misc category, where reusing the same customer code is normal and
+    // expected (repeat repair visits, R&D test withdrawals, etc).
+    const isRepair = /ซ่อม/.test(model.category || '');
+    if (!isRepair) {
+      const { data: dupes } = await supabase.from('transactions').select('order_ref, created_at')
+        .ilike('order_ref', orderRef.trim()).neq('category', 'ซ่อมและอื่นๆ').limit(1);
+      if (dupes && dupes.length > 0) {
+        return { error: `รหัส/ชื่อลูกค้า "${orderRef.trim()}" มีอยู่ในระบบแล้ว (เคยเบิกไว้เมื่อ ${dupes[0].created_at.slice(0, 10)}) — กรุณาใช้รหัสอื่น` };
+      }
+    }
+
     // This now only files a REQUEST — nothing is deducted yet. The stock lead
     // picks each material line individually (pickLine) once it's physically
     // handed over, and that's the moment stock actually gets deducted.
@@ -73,7 +88,13 @@ export function useInventoryData(role) {
       model_id: model.id || null, model_name: model.name, category: model.category,
       order_ref: orderRef, staff_name: staffName, bom_snapshot: bomSnapshot, created_by: userId, note,
     });
-    if (error) return { error: error.message };
+    if (error) {
+      // 23505 = unique_violation — the DB-level safety net catching a race
+      // condition (two people submitting the same code at the exact same
+      // moment), just in case the pre-check above was juuust missed.
+      if (error.code === '23505') return { error: `รหัส/ชื่อลูกค้า "${orderRef.trim()}" เพิ่งถูกใช้ไปแล้วเมื่อครู่นี้ — กรุณาใช้รหัสอื่น` };
+      return { error: error.message };
+    }
     await loadAll();
     return { error: null };
   }
@@ -103,7 +124,7 @@ export function useInventoryData(role) {
   // it — instead of ticking the same material once per order. Still writes a
   // separate stock_log line per order underneath, so month-end reconciliation
   // against the master plan stays accurate down to the individual order code.
-  async function bulkPickMaterial(materialId, userId, onProgress) {
+  async function bulkPickMaterial(materialId, userId, onProgress, reload = true) {
     const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
     if (affected.length === 0) return { error: null };
     const lines = affected.map(t => ({ tx: t, line: t.bom_snapshot.find(b => b.material_id === materialId) }));
@@ -124,8 +145,23 @@ export function useInventoryData(role) {
       type: 'out', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
       order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
     })));
-    await loadAll();
+    if (reload) await loadAll();
     return { error: null };
+  }
+
+  // Batch version: stage many materials in the UI, then confirm ALL of them
+  // in one action — only reloads/re-renders ONCE at the end instead of once
+  // per tick, so the screen doesn't jump around while ticking things off.
+  async function bulkPickMaterials(materialIds, userId, onProgress) {
+    const errors = [];
+    let done = 0;
+    for (const materialId of materialIds) {
+      const { error } = await bulkPickMaterial(materialId, userId, null, false);
+      if (error) errors.push(error);
+      done++; onProgress?.(done, materialIds.length);
+    }
+    await loadAll();
+    return { errors };
   }
 
   async function unpickLine(tx, materialId, userId) {
@@ -150,7 +186,7 @@ export function useInventoryData(role) {
   // second, independent checklist from the stock lead's "picked" one. Doesn't
   // touch stock or logs at all; it's purely a cross-check to catch mistakes
   // on either side (wrong item handed over, wrong quantity counted, etc).
-  async function confirmReceived(tx, materialId) {
+  async function confirmReceived(tx, materialId, reload = true) {
     const line = tx.bom_snapshot.find(b => b.material_id === materialId);
     if (!line || line.received) return { error: null };
     const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, received: true } : b);
@@ -158,8 +194,22 @@ export function useInventoryData(role) {
     if (error || !updated || updated.length === 0) {
       return { error: 'ยืนยันไม่สำเร็จ (สิทธิ์ไม่พอ หรือมีปัญหาการเชื่อมต่อ)' };
     }
-    await loadAll();
+    if (reload) await loadAll();
     return { error: null };
+  }
+
+  // Batch version, same idea as bulkPickMaterials: stage several confirmations
+  // in the UI, submit them all in one action, one reload at the end.
+  async function confirmReceivedBatch(items, onProgress) {
+    const errors = [];
+    let done = 0;
+    for (const { tx, materialId } of items) {
+      const { error } = await confirmReceived(tx, materialId, false);
+      if (error) errors.push(error);
+      done++; onProgress?.(done, items.length);
+    }
+    await loadAll();
+    return { errors };
   }
 
   async function cancelTransaction(tx, userId) {
@@ -234,6 +284,6 @@ export function useInventoryData(role) {
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
-    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, confirmReceived, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
+    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, bulkPickMaterials, confirmReceived, confirmReceivedBatch, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
   };
 }
