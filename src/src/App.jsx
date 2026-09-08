@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks } from 'lucide-react';
+import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
-import { C, sans, mono, CATEGORIES, btnPrimary } from './theme';
+import { C, sans, mono, CATEGORIES, REPAIR_LABEL, btnPrimary } from './theme';
 import Login from './components/Login';
 import { Modal } from './components/Modal';
 import { ProduceForm } from './components/ProduceForm';
 import { MaterialForm } from './components/MaterialForm';
 import { RestockForm } from './components/RestockForm';
 import { ModelForm } from './components/ModelForm';
+import { RepairRequestForm } from './components/RepairRequestForm';
 import { FloorView } from './views/FloorView';
-import { MyOrders } from './components/MyOrders';
 import { StockView } from './views/StockView';
 import { ReportView } from './views/ReportView';
 import { PickQueueView } from './views/PickQueueView';
+import { RecheckView } from './views/RecheckView';
 import { SettingsView } from './views/SettingsView';
 
 export default function App() {
@@ -42,6 +43,7 @@ function Workspace({ profile, role, signOut, userId }) {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [restockMaterial, setRestockMaterial] = useState(null);
   const [editingModel, setEditingModel] = useState(null);
+  const [showRepairForm, setShowRepairForm] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
 
   const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 2500); };
@@ -59,6 +61,7 @@ function Workspace({ profile, role, signOut, userId }) {
   useEffect(() => { if (role !== 'admin' && view === 'report') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'settings') setView('floor'); }, [role, view]);
   useEffect(() => { if (role === 'staff' && view === 'stock') setView('floor'); }, [role, view]);
+  useEffect(() => { if (role !== 'staff' && view === 'recheck') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'pick') setView('floor'); }, [role, view]);
 
   async function handleProduce(model, orderRef, staffName) {
@@ -80,22 +83,31 @@ function Workspace({ profile, role, signOut, userId }) {
     }
     setProduceModel(null);
   }
+  async function handleRepairRequest({ orderRef, subType, note, staffName, bom }) {
+    const pseudoModel = { id: null, name: subType, category: REPAIR_LABEL, bom };
+    const { error } = await inv.produceUnit(pseudoModel, orderRef, staffName, userId, note);
+    if (error) showToast(error, 'warn');
+    else { showToast(`ส่งคำขอเบิก (ซ่อม) — ${orderRef} แล้ว`, 'ok'); setShowRepairForm(false); }
+  }
   async function handleCancel(tx) {
     const { error } = await inv.cancelTransaction(tx, userId);
     if (error) showToast(error, 'warn');
     else showToast(`ยกเลิกออเดอร์ ${tx.order_ref} แล้ว — คืนวัตถุดิบเข้าคลัง`, 'ok');
     setCancelTx(null);
   }
-  async function handlePick(tx, materialId) {
-    return inv.pickLine(tx, materialId, userId);
+  async function handleBulkPickBatch(materialIds) {
+    return inv.bulkPickMaterials(materialIds, userId);
+  }
+  async function handleConfirmReceivedBatch(items) {
+    return inv.confirmReceivedBatch(items);
   }
   async function handleSaveMaterial(m) {
     await inv.saveMaterial(m);
     setEditingMaterial(null); setShowAddMaterial(false);
     showToast(m.id ? 'บันทึกการแก้ไขแล้ว' : `เพิ่ม ${m.name} เข้าคลังแล้ว`, 'ok');
   }
-  async function handleRestock(materialId, amount) {
-    await inv.restock(materialId, amount, userId, profile?.full_name || '');
+  async function handleRestock(materialId, amount, staffName) {
+    await inv.restock(materialId, amount, userId, staffName);
     setRestockMaterial(null);
     showToast(`รับเข้าคลังแล้ว +${amount}`, 'ok');
   }
@@ -117,7 +129,7 @@ function Workspace({ profile, role, signOut, userId }) {
     ? [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'pick', label: 'คิวเบิก', icon: ListChecks }, { key: 'stock', label: 'คลัง', icon: Settings }, { key: 'report', label: 'รายงาน', icon: ClipboardList }]
     : role === 'purchasing'
       ? [{ key: 'stock', label: 'คลัง', icon: Settings }]
-      : [{ key: 'floor', label: 'ผลิต', icon: Package }]; // staff: no stock tab
+      : [{ key: 'floor', label: 'ผลิต', icon: Package }, { key: 'recheck', label: 'เช็ครับของ', icon: ClipboardCheck }]; // staff: no stock tab
 
   const modelsInCat = inv.models.filter(m => m.category === activeCat);
 
@@ -164,13 +176,14 @@ function Workspace({ profile, role, signOut, userId }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 14, boxSizing: 'border-box' }}>
           {view === 'floor' && (
             <FloorView category={activeCat} models={modelsInCat} materialsById={inv.materialsById}
-              onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel} />
-          )}
-          {view === 'floor' && role === 'staff' && (
-            <MyOrders transactions={inv.transactions} userId={userId} onCancel={setCancelTx} />
+              onProduce={setProduceModel} role={role} onAddModel={() => setEditingModel('new')} onEditModel={setEditingModel}
+              onRepairRequest={() => setShowRepairForm(true)} />
           )}
           {view === 'pick' && role === 'admin' && (
-            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onPick={handlePick} />
+            <PickQueueView transactions={inv.transactions} materialsById={inv.materialsById} onBulkPickBatch={handleBulkPickBatch} />
+          )}
+          {view === 'recheck' && role === 'staff' && (
+            <RecheckView transactions={inv.transactions} userId={userId} onConfirmBatch={handleConfirmReceivedBatch} onCancel={setCancelTx} />
           )}
           {view === 'stock' && (
             <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}
@@ -196,6 +209,10 @@ function Workspace({ profile, role, signOut, userId }) {
 
         {/* Modals */}
         {produceModel && <ProduceForm model={produceModel} materialsById={inv.materialsById} onConfirm={handleProduce} onConfirmBatch={handleProduceBatch} onClose={() => setProduceModel(null)} />}
+
+        {showRepairForm && (
+          <RepairRequestForm materials={inv.materials} onConfirm={handleRepairRequest} onClose={() => setShowRepairForm(false)} />
+        )}
 
         {cancelTx && (
           <Modal onClose={() => setCancelTx(null)} title={`ยกเลิกออเดอร์ — ${cancelTx.order_ref}`}>
