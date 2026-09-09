@@ -127,50 +127,61 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // One tick marks a material picked across EVERY open order that still needs
-  // it — instead of ticking the same material once per order. Still writes a
-  // separate stock_log line per order underneath, so month-end reconciliation
-  // against the master plan stays accurate down to the individual order code.
-  async function bulkPickMaterial(materialId, userId, onProgress, reload = true) {
-    const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
-    if (affected.length === 0) return { error: null };
-    const lines = affected.map(t => ({ tx: t, line: t.bom_snapshot.find(b => b.material_id === materialId) }));
-    const totalQty = lines.reduce((s, { line }) => s + line.qty, 0);
-    const m = materialsById[materialId];
-    if (!m || m.qty < totalQty) {
-      return { error: `${lines[0].line.material_name} ไม่พอในคลัง (มี ${m?.qty ?? 0} ${lines[0].line.unit}, ต้องการรวม ${totalQty})` };
-    }
-    let done = 0;
-    for (const { tx, line } of lines) {
-      const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: true } : b);
-      await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id);
-      done++; onProgress?.(done, lines.length);
-      void line;
-    }
-    await supabase.from('materials').update({ qty: m.qty - totalQty }).eq('id', materialId);
-    await supabase.from('stock_log').insert(lines.map(({ tx, line }) => ({
-      type: 'out', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
-      order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
-    })));
-    if (reload) await loadAll();
-    return { error: null };
-  }
-
   // Batch version: stage many materials in the UI, then confirm ALL of them
-  // in one action — only reloads/re-renders ONCE at the end instead of once
-  // per tick, so the screen doesn't jump around while ticking things off.
+  // in one action. Rewritten to fix a real bug — writing one material at a
+  // time to the same order's bom_snapshot column was overwriting earlier
+  // writes to OTHER materials on that same order (each write recomputed the
+  // whole column from a stale pre-batch snapshot). Now every staged change
+  // is merged in memory FIRST, then each affected order is written to the
+  // database exactly once with its fully-combined result.
   async function bulkPickMaterials(materialIds, userId, onProgress) {
     suppressRealtimeRef.current = true;
+    const idSet = new Set(materialIds);
+    const affectedTx = transactions.filter(t => t.bom_snapshot.some(b => idSet.has(b.material_id) && !b.picked));
+
+    // Check stock is sufficient for the combined total needed per material
+    // across every affected order, before writing anything.
+    const neededByMaterial = {};
+    affectedTx.forEach(t => {
+      t.bom_snapshot.forEach(b => {
+        if (idSet.has(b.material_id) && !b.picked) neededByMaterial[b.material_id] = (neededByMaterial[b.material_id] || 0) + b.qty;
+      });
+    });
     const errors = [];
-    let done = 0;
-    for (const materialId of materialIds) {
-      const { error } = await bulkPickMaterial(materialId, userId, null, false);
-      if (error) errors.push(error);
-      done++; onProgress?.(done, materialIds.length);
+    for (const [materialId, needed] of Object.entries(neededByMaterial)) {
+      const m = materialsById[materialId];
+      if (!m || m.qty < needed) errors.push(`${m?.name ?? materialId} ไม่พอในคลัง (มี ${m?.qty ?? 0}, ต้องการรวม ${needed})`);
     }
+    if (errors.length) { suppressRealtimeRef.current = false; return { errors }; }
+
+    // Merge in memory: one fully-updated bom_snapshot per affected order.
+    const updatedSnapshots = {};
+    affectedTx.forEach(t => {
+      updatedSnapshots[t.id] = t.bom_snapshot.map(b => (idSet.has(b.material_id) && !b.picked) ? { ...b, picked: true } : b);
+    });
+
+    let done = 0;
+    for (const t of affectedTx) {
+      await supabase.from('transactions').update({ bom_snapshot: updatedSnapshots[t.id] }).eq('id', t.id);
+      done++; onProgress?.(done, affectedTx.length);
+    }
+    for (const [materialId, needed] of Object.entries(neededByMaterial)) {
+      const m = materialsById[materialId];
+      await supabase.from('materials').update({ qty: m.qty - needed }).eq('id', materialId);
+    }
+    const logRows = [];
+    affectedTx.forEach(t => {
+      t.bom_snapshot.forEach(b => {
+        if (idSet.has(b.material_id) && !b.picked) {
+          logRows.push({ type: 'out', material_id: b.material_id, material_name: b.material_name, unit: b.unit, amount: b.qty, order_ref: t.order_ref, staff_name: t.staff_name, created_by: userId });
+        }
+      });
+    });
+    if (logRows.length) await supabase.from('stock_log').insert(logRows);
+
     await loadAll();
     suppressRealtimeRef.current = false;
-    return { errors };
+    return { errors: [] };
   }
 
   async function unpickLine(tx, materialId, userId) {
@@ -209,20 +220,28 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // Batch version, same idea as bulkPickMaterials: stage several confirmations
-  // in the UI, submit them all in one action, one reload at the end.
+  // Batch version — same fix as bulkPickMaterials: group the staged items by
+  // ORDER first, merge every material being confirmed for that order in
+  // memory, then write each order's transaction row exactly once. Writing
+  // one material at a time per order was overwriting earlier materials
+  // confirmed on that same order.
   async function confirmReceivedBatch(items, onProgress) {
     suppressRealtimeRef.current = true;
-    const errors = [];
+    const byTx = {}; // txId -> { tx, materialIds: Set }
+    items.forEach(({ tx, materialId }) => {
+      if (!byTx[tx.id]) byTx[tx.id] = { tx, materialIds: new Set() };
+      byTx[tx.id].materialIds.add(materialId);
+    });
+    const groups = Object.values(byTx);
     let done = 0;
-    for (const { tx, materialId } of items) {
-      const { error } = await confirmReceived(tx, materialId, false);
-      if (error) errors.push(error);
-      done++; onProgress?.(done, items.length);
+    for (const { tx, materialIds } of groups) {
+      const nextSnapshot = tx.bom_snapshot.map(b => materialIds.has(b.material_id) ? { ...b, received: true } : b);
+      await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id);
+      done++; onProgress?.(done, groups.length);
     }
     await loadAll();
     suppressRealtimeRef.current = false;
-    return { errors };
+    return { errors: [] };
   }
 
   async function cancelTransaction(tx, userId) {
@@ -309,6 +328,6 @@ export function useInventoryData(role) {
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
-    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterial, bulkPickMaterials, confirmReceived, confirmReceivedBatch, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
+    produceUnit, cancelTransaction, pickLine, unpickLine, bulkPickMaterials, confirmReceived, confirmReceivedBatch, saveMaterial, deleteMaterial, restock, saveModel, deleteModel, reload: loadAll,
   };
 }
