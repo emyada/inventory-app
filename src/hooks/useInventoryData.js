@@ -117,34 +117,26 @@ export function useInventoryData(role) {
     return await bulkPickMaterials([materialId], userId, onProgress);
   }
 
-  // ✅ แก้ไขใหม่: ดึงข้อมูลสดจาก DB โดยตรงก่อน Map ค่ากลับ ป้องกัน State UI ล้าสมัยทำข้อมูลหาย
+  // ✅ ปรับปรุง bulkPickMaterials: ตัดการ query ซ้ำ หายกริ๊บ หยุดกระพริบ 100%
   async function bulkPickMaterials(materialIds, userId, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
     try {
-      if (!materialIds || materialIds.length === 0) return { errors: [] };
-
-      // 1. ดึง Transactions ล่าสุดจาก DB โดยตรงเพื่อไม่ให้ใช้ State เก่า
-      const { data: latestTxs, error: fetchErr } = await supabase
-        .from('transactions')
-        .select('*');
-
-      if (fetchErr || !latestTxs) {
-        suppressRealtimeRef.current = false;
-        return { errors: ['ไม่สามารถเชื่อมต่อฐานข้อมูลได้'] };
-      }
-
-      const affectedTxs = latestTxs.filter(t => 
-        t.bom_snapshot.some(b => materialIds.includes(b.material_id) && !b.picked)
-      );
-
-      if (affectedTxs.length === 0) {
-        await loadAll();
+      if (!materialIds || materialIds.length === 0) {
         suppressRealtimeRef.current = false;
         return { errors: [] };
       }
 
-      // 2. คำนวณจำนวนที่ต้องตัด
+      // ใช้ข้อมูลที่มีอยู่ใน state ปัจจุบันโดยไม่ยิง query ซ้ำ
+      const affectedTxs = transactions.filter(t => 
+        t.bom_snapshot.some(b => materialIds.includes(b.material_id) && !b.picked)
+      );
+
+      if (affectedTxs.length === 0) {
+        suppressRealtimeRef.current = false;
+        return { errors: [] };
+      }
+
       const totalQtyToDeduct = {};
       const stockLogsToInsert = [];
 
@@ -166,7 +158,6 @@ export function useInventoryData(role) {
         });
       });
 
-      // 3. เช็คสต็อก
       for (const mId of Object.keys(totalQtyToDeduct)) {
         const m = materialsById[mId];
         const needed = totalQtyToDeduct[mId];
@@ -176,31 +167,23 @@ export function useInventoryData(role) {
         }
       }
 
-      // 4. อัปเดตรายการลง DB
-      let doneCount = 0;
-      for (const tx of affectedTxs) {
+      // อัปเดต DB แบบยิงส่งคู่ขนานไปเลย
+      const updatePromises = affectedTxs.map(tx => {
         const nextSnapshot = tx.bom_snapshot.map(b => 
           materialIds.includes(b.material_id) ? { ...b, picked: true } : b
         );
+        return supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id);
+      });
 
-        const { error } = await supabase
-          .from('transactions')
-          .update({ bom_snapshot: nextSnapshot })
-          .eq('id', tx.id);
+      await Promise.all(updatePromises);
 
-        if (error) errors.push(error.message);
-        doneCount++;
-        onProgress?.(doneCount, affectedTxs.length);
-      }
-
-      // 5. หักสต็อกวัตถุดิบ
+      // ตัดสต็อกวัตถุดิบ
       for (const mId of Object.keys(totalQtyToDeduct)) {
         const m = materialsById[mId];
         const qtyToDeduct = totalQtyToDeduct[mId];
         await supabase.from('materials').update({ qty: m.qty - qtyToDeduct }).eq('id', mId);
       }
 
-      // 6. เพิ่ม Log
       if (stockLogsToInsert.length > 0) {
         await supabase.from('stock_log').insert(stockLogsToInsert);
       }
@@ -252,43 +235,23 @@ export function useInventoryData(role) {
     try {
       if (!items || items.length === 0) return { errors: [] };
 
-      // ดึงข้อมูลสดจาก DB
-      const { data: latestTxs } = await supabase.from('transactions').select('*');
-      if (!latestTxs) return { errors: ['ไม่สามารถดึงข้อมูลสดได้'] };
-
       const itemsByTx = {};
       items.forEach(({ tx, materialId }) => {
         if (!itemsByTx[tx.id]) {
-          itemsByTx[tx.id] = { materialIds: [] };
+          itemsByTx[tx.id] = { tx, materialIds: [] };
         }
         itemsByTx[tx.id].materialIds.push(materialId);
       });
 
-      const txKeys = Object.keys(itemsByTx);
-      let done = 0;
-
-      for (const txId of txKeys) {
-        const liveTx = latestTxs.find(t => t.id === Number(txId) || t.id === txId);
-        if (!liveTx) continue;
-
-        const { materialIds } = itemsByTx[txId];
-        
-        const nextSnapshot = liveTx.bom_snapshot.map(b => 
+      const updatePromises = Object.keys(itemsByTx).map(txId => {
+        const { tx, materialIds } = itemsByTx[txId];
+        const nextSnapshot = tx.bom_snapshot.map(b => 
           materialIds.includes(b.material_id) ? { ...b, received: true } : b
         );
+        return supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', txId);
+      });
 
-        const { error } = await supabase
-          .from('transactions')
-          .update({ bom_snapshot: nextSnapshot })
-          .eq('id', txId);
-
-        if (error) {
-          errors.push(error.message);
-        }
-
-        done += materialIds.length;
-        onProgress?.(done, items.length);
-      }
+      await Promise.all(updatePromises);
     } catch (err) {
       errors.push(err.message || 'เกิดข้อผิดพลาดในการยืนยัน');
     }
