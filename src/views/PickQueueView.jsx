@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Check, Package, Users, Loader2 } from 'lucide-react';
+import { Check, Package, Users, Save } from 'lucide-react';
 import { C, mono } from '../theme';
 
 export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) {
-  const [loadingMap, setLoadingMap] = useState({});
+  const [staged, setStaged] = useState([]); // material_ids ticked but not yet confirmed
+  const [confirming, setConfirming] = useState(false);
 
   const openOrders = transactions.filter(t => t.bom_snapshot?.some(b => !b.picked));
 
@@ -25,28 +26,32 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     byStaff[key].byModel[t.model_name] = (byStaff[key].byModel[t.model_name] || 0) + 1;
   });
 
-  // ✅ กดเบิกวัตถุดิบรายการนี้ทันที (ทุกออเดอร์ค้าง) รวดเดียวจบ สต็อกตัดตรงเป๊ะ
-  async function handleSingleMaterialPick(materialId) {
-    if (loadingMap[materialId]) return;
-    
-    setLoadingMap(prev => ({ ...prev, [materialId]: true }));
+  function toggleStage(materialId) {
+    setStaged(s => s.includes(materialId) ? s.filter(id => id !== materialId) : [...s, materialId]);
+  }
+
+  const processingRef = useRef(false);
+  async function handleConfirm() {
+    if (processingRef.current) return; // hard synchronous guard against double-submit
+    processingRef.current = true;
+    setConfirming(true);
     try {
-      const { errors } = await onBulkPickBatch([materialId]);
-      if (errors && errors.length > 0) {
-        alert(errors.join('\n'));
-      }
+      const { errors } = await onBulkPickBatch(staged);
+      setStaged([]);
+      if (errors && errors.length) alert(errors.join('\n'));
     } finally {
-      setLoadingMap(prev => ({ ...prev, [materialId]: false }));
+      processingRef.current = false;
+      setConfirming(false);
     }
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: staged.length > 0 ? 64 : 0 }}>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>คิวรอเบิก</div>
       <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 14 }}>{openOrders.length} ออเดอร์ยังไม่จ่ายครบ</div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: C.amber, marginBottom: 8 }}>
-        <Package size={14} /> รวมที่ต้องหยิบตอนนี้ — กดที่รายการเพื่อเบิกตัดสต็อกทันที
+        <Package size={14} /> รวมที่ต้องหยิบตอนนี้ — ติ๊กแล้วกด "ยืนยัน" ด้านล่างทีเดียว
       </div>
 
       {totalRows.length === 0 && (
@@ -55,22 +60,21 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
 
       <div className="grid-list" style={{ marginBottom: 22 }}>
         {totalRows.map(r => {
-          const isLoading = !!loadingMap[r.id];
+          const isStaged = staged.includes(r.id);
           return (
-            <button key={r.id} onClick={() => handleSingleMaterialPick(r.id)} disabled={isLoading}
+            <button key={r.id} onClick={() => toggleStage(r.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%', boxSizing: 'border-box',
-                background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', cursor: isLoading ? 'not-allowed' : 'pointer', color: C.text,
-                opacity: isLoading ? 0.6 : 1, transition: 'all 0.15s ease'
+                background: isStaged ? 'rgba(63,167,150,0.1)' : C.panel, border: `1px solid ${isStaged ? C.teal : C.line}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer', color: C.text,
               }}>
-              <div style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${C.line}`, background: 'transparent' }}>
-                {isLoading ? <Loader2 size={13} className="spin" color={C.teal} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.teal }} />}
+              <div style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${isStaged ? C.teal : C.line}`, background: isStaged ? C.teal : 'transparent' }}>
+                {isStaged && <Check size={13} color={C.bg} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{r.name}</div>
+                <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text, textDecoration: isStaged ? 'line-through' : 'none', opacity: isStaged ? 0.6 : 1 }}>{r.name}</div>
                 <div style={{ fontSize: 10.5, color: C.textDim }}>จาก {r.orders} ออเดอร์</div>
               </div>
-              <div style={{ ...mono, fontWeight: 700, color: C.teal, flexShrink: 0 }}>{r.qty} {r.unit}</div>
+              <div style={{ ...mono, fontWeight: 700, color: isStaged ? C.textDim : C.teal, flexShrink: 0 }}>{r.qty} {r.unit}</div>
             </button>
           );
         })}
@@ -112,6 +116,15 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
           </div>
         ))}
       </div>
+
+      {staged.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 62, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 25, padding: '0 14px', boxSizing: 'border-box' }}>
+          <button onClick={handleConfirm} disabled={confirming}
+            style={{ width: '100%', maxWidth: 480 - 28, background: C.amber, color: C.bg, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.4)' }}>
+            <Save size={16} /> {confirming ? 'กำลังยืนยัน...' : `ยืนยันหยิบแล้ว (${staged.length})`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
