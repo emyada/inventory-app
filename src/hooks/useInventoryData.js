@@ -4,7 +4,7 @@ import { todayStr } from '../theme';
 
 export function useInventoryData(role) {
   const [materials, setMaterials] = useState([]);
-  const [models, setModels] = useState([]); // { id, name, category, bom: [{material_id, qty}] }
+  const [models, setModels] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [stockLog, setStockLog] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,38 +116,92 @@ export function useInventoryData(role) {
   async function bulkPickMaterial(materialId, userId, onProgress, reload = true) {
     const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
     if (affected.length === 0) return { error: null };
-    const lines = affected.map(t => ({ tx: t, line: t.bom_snapshot.find(b => b.material_id === materialId) }));
-    const totalQty = lines.reduce((s, { line }) => s + line.qty, 0);
-    const m = materialsById[materialId];
-    if (!m || m.qty < totalQty) {
-      return { error: `${lines[0].line.material_name} ไม่พอในคลัง (มี ${m?.qty ?? 0} ${lines[0].line.unit}, ต้องการรวม ${totalQty})` };
-    }
-    let done = 0;
-    for (const { tx, line } of lines) {
-      const nextSnapshot = tx.bom_snapshot.map(b => b.material_id === materialId ? { ...b, picked: true } : b);
-      await supabase.from('transactions').update({ bom_snapshot: nextSnapshot }).eq('id', tx.id);
-      done++; onProgress?.(done, lines.length);
-      void line;
-    }
-    await supabase.from('materials').update({ qty: m.qty - totalQty }).eq('id', materialId);
-    await supabase.from('stock_log').insert(lines.map(({ tx, line }) => ({
-      type: 'out', material_id: materialId, material_name: line.material_name, unit: line.unit, amount: line.qty,
-      order_ref: tx.order_ref, staff_name: tx.staff_name, created_by: userId,
-    })));
-    if (reload) await loadAll();
-    return { error: null };
+    
+    return await bulkPickMaterials([materialId], userId, onProgress);
   }
 
-  // ✅ แก้ไข: รวมการเบิกทีละหลายรายการให้คำนวณใน Memory ก่อนยิง DB
+  // ✅ FIXED: แก้ไขการเบิกหลายรายการพร้อมกัน (คำนวณทบยอดใน Memory ยิง DB รอบเดียวจบ)
   async function bulkPickMaterials(materialIds, userId, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
-    let done = 0;
-    for (const materialId of materialIds) {
-      const { error } = await bulkPickMaterial(materialId, userId, null, false);
-      if (error) errors.push(error);
-      done++; onProgress?.(done, materialIds.length);
+    try {
+      if (!materialIds || materialIds.length === 0) return { errors: [] };
+
+      // 1. ค้นหาออเดอร์ทั้งหมดที่ต้องเบิกวัตถุดิบเหล่านี้
+      const affectedTxs = transactions.filter(t => 
+        t.bom_snapshot.some(b => materialIds.includes(b.material_id) && !b.picked)
+      );
+
+      if (affectedTxs.length === 0) {
+        suppressRealtimeRef.current = false;
+        return { errors: [] };
+      }
+
+      // 2. คำนวณจำนวนวัตถุดิบที่ต้องหักทั้งหมดเพื่อเช็คสต็อกก่อน
+      const totalQtyToDeduct = {};
+      const stockLogsToInsert = [];
+
+      affectedTxs.forEach(tx => {
+        tx.bom_snapshot.forEach(b => {
+          if (materialIds.includes(b.material_id) && !b.picked) {
+            totalQtyToDeduct[b.material_id] = (totalQtyToDeduct[b.material_id] || 0) + b.qty;
+            stockLogsToInsert.push({
+              type: 'out',
+              material_id: b.material_id,
+              material_name: b.material_name,
+              unit: b.unit,
+              amount: b.qty,
+              order_ref: tx.order_ref,
+              staff_name: tx.staff_name,
+              created_by: userId,
+            });
+          }
+        });
+      });
+
+      // 3. ตรวจสอบว่าสต็อกในคลังพอตัดหรือไม่
+      for (const mId of Object.keys(totalQtyToDeduct)) {
+        const m = materialsById[mId];
+        const needed = totalQtyToDeduct[mId];
+        if (!m || m.qty < needed) {
+          suppressRealtimeRef.current = false;
+          return { errors: [`${m?.name || 'วัตถุดิบ'} ไม่พอในคลัง (มี ${m?.qty ?? 0}, ต้องการ ${needed})`] };
+        }
+      }
+
+      // 4. อัปเดตสถานะ picked ใน transactions (ทำรวดเดียวต่อ 1 ออเดอร์)
+      let doneCount = 0;
+      for (const tx of affectedTxs) {
+        const nextSnapshot = tx.bom_snapshot.map(b => 
+          materialIds.includes(b.material_id) ? { ...b, picked: true } : b
+        );
+
+        const { error } = await supabase
+          .from('transactions')
+          .update({ bom_snapshot: nextSnapshot })
+          .eq('id', tx.id);
+
+        if (error) errors.push(error.message);
+        doneCount++;
+        onProgress?.(doneCount, affectedTxs.length);
+      }
+
+      // 5. ตัดสต็อกวัตถุดิบจริงในตาราง materials
+      for (const mId of Object.keys(totalQtyToDeduct)) {
+        const m = materialsById[mId];
+        const qtyToDeduct = totalQtyToDeduct[mId];
+        await supabase.from('materials').update({ qty: m.qty - qtyToDeduct }).eq('id', mId);
+      }
+
+      // 6. บันทึก Stock Log
+      if (stockLogsToInsert.length > 0) {
+        await supabase.from('stock_log').insert(stockLogsToInsert);
+      }
+
+    } catch (err) {
+      errors.push(err.message || 'เกิดข้อผิดพลาดในการเบิกวัตถุดิบ');
     }
+
     await loadAll();
     suppressRealtimeRef.current = false;
     return { errors };
@@ -185,14 +239,12 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // ✅ FIXED: แก้ไขฟังก์ชันนี้ให้รวมรายการที่ถูกเลือกใน Transaction เดียวกันก่อน แล้วยิงอัปเดตครั้งเดียวจบ
   async function confirmReceivedBatch(items, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
     try {
       if (!items || items.length === 0) return { errors: [] };
 
-      // 1. จัดกลุ่มรายการตามTransaction ID
       const itemsByTx = {};
       items.forEach(({ tx, materialId }) => {
         if (!itemsByTx[tx.id]) {
@@ -204,11 +256,9 @@ export function useInventoryData(role) {
       const txKeys = Object.keys(itemsByTx);
       let done = 0;
 
-      // 2. วนลูปอัปเดต DB โดยยิง 1 Request ต่อ 1 Transaction (รวมทุกรายการที่ติ๊กใน Transaction นั้นแล้ว)
       for (const txId of txKeys) {
         const { tx, materialIds } = itemsByTx[txId];
         
-        // คำนวณ nextSnapshot รวดเดียวใน Memory
         const nextSnapshot = tx.bom_snapshot.map(b => 
           materialIds.includes(b.material_id) ? { ...b, received: true } : b
         );
