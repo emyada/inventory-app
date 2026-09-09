@@ -114,30 +114,37 @@ export function useInventoryData(role) {
   }
 
   async function bulkPickMaterial(materialId, userId, onProgress, reload = true) {
-    const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
-    if (affected.length === 0) return { error: null };
-    
     return await bulkPickMaterials([materialId], userId, onProgress);
   }
 
-  // ✅ FIXED: แก้ไขการเบิกหลายรายการพร้อมกัน (คำนวณทบยอดใน Memory ยิง DB รอบเดียวจบ)
+  // ✅ แก้ไขใหม่: ดึงข้อมูลสดจาก DB โดยตรงก่อน Map ค่ากลับ ป้องกัน State UI ล้าสมัยทำข้อมูลหาย
   async function bulkPickMaterials(materialIds, userId, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
     try {
       if (!materialIds || materialIds.length === 0) return { errors: [] };
 
-      // 1. ค้นหาออเดอร์ทั้งหมดที่ต้องเบิกวัตถุดิบเหล่านี้
-      const affectedTxs = transactions.filter(t => 
+      // 1. ดึง Transactions ล่าสุดจาก DB โดยตรงเพื่อไม่ให้ใช้ State เก่า
+      const { data: latestTxs, error: fetchErr } = await supabase
+        .from('transactions')
+        .select('*');
+
+      if (fetchErr || !latestTxs) {
+        suppressRealtimeRef.current = false;
+        return { errors: ['ไม่สามารถเชื่อมต่อฐานข้อมูลได้'] };
+      }
+
+      const affectedTxs = latestTxs.filter(t => 
         t.bom_snapshot.some(b => materialIds.includes(b.material_id) && !b.picked)
       );
 
       if (affectedTxs.length === 0) {
+        await loadAll();
         suppressRealtimeRef.current = false;
         return { errors: [] };
       }
 
-      // 2. คำนวณจำนวนวัตถุดิบที่ต้องหักทั้งหมดเพื่อเช็คสต็อกก่อน
+      // 2. คำนวณจำนวนที่ต้องตัด
       const totalQtyToDeduct = {};
       const stockLogsToInsert = [];
 
@@ -159,7 +166,7 @@ export function useInventoryData(role) {
         });
       });
 
-      // 3. ตรวจสอบว่าสต็อกในคลังพอตัดหรือไม่
+      // 3. เช็คสต็อก
       for (const mId of Object.keys(totalQtyToDeduct)) {
         const m = materialsById[mId];
         const needed = totalQtyToDeduct[mId];
@@ -169,7 +176,7 @@ export function useInventoryData(role) {
         }
       }
 
-      // 4. อัปเดตสถานะ picked ใน transactions (ทำรวดเดียวต่อ 1 ออเดอร์)
+      // 4. อัปเดตรายการลง DB
       let doneCount = 0;
       for (const tx of affectedTxs) {
         const nextSnapshot = tx.bom_snapshot.map(b => 
@@ -186,14 +193,14 @@ export function useInventoryData(role) {
         onProgress?.(doneCount, affectedTxs.length);
       }
 
-      // 5. ตัดสต็อกวัตถุดิบจริงในตาราง materials
+      // 5. หักสต็อกวัตถุดิบ
       for (const mId of Object.keys(totalQtyToDeduct)) {
         const m = materialsById[mId];
         const qtyToDeduct = totalQtyToDeduct[mId];
         await supabase.from('materials').update({ qty: m.qty - qtyToDeduct }).eq('id', mId);
       }
 
-      // 6. บันทึก Stock Log
+      // 6. เพิ่ม Log
       if (stockLogsToInsert.length > 0) {
         await supabase.from('stock_log').insert(stockLogsToInsert);
       }
@@ -245,10 +252,14 @@ export function useInventoryData(role) {
     try {
       if (!items || items.length === 0) return { errors: [] };
 
+      // ดึงข้อมูลสดจาก DB
+      const { data: latestTxs } = await supabase.from('transactions').select('*');
+      if (!latestTxs) return { errors: ['ไม่สามารถดึงข้อมูลสดได้'] };
+
       const itemsByTx = {};
       items.forEach(({ tx, materialId }) => {
         if (!itemsByTx[tx.id]) {
-          itemsByTx[tx.id] = { tx, materialIds: [] };
+          itemsByTx[tx.id] = { materialIds: [] };
         }
         itemsByTx[tx.id].materialIds.push(materialId);
       });
@@ -257,9 +268,12 @@ export function useInventoryData(role) {
       let done = 0;
 
       for (const txId of txKeys) {
-        const { tx, materialIds } = itemsByTx[txId];
+        const liveTx = latestTxs.find(t => t.id === Number(txId) || t.id === txId);
+        if (!liveTx) continue;
+
+        const { materialIds } = itemsByTx[txId];
         
-        const nextSnapshot = tx.bom_snapshot.map(b => 
+        const nextSnapshot = liveTx.bom_snapshot.map(b => 
           materialIds.includes(b.material_id) ? { ...b, received: true } : b
         );
 
