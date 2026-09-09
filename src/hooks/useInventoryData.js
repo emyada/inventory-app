@@ -9,10 +9,7 @@ export function useInventoryData(role) {
   const [stockLog, setStockLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // While true, incoming realtime change events are ignored — set during any
-  // local batch of writes (several DB calls in a row for one logical action)
-  // so mid-batch realtime pings don't trigger a flurry of reloads/flicker.
-  // The batch's own final loadAll() at the end is what actually refreshes.
+
   const suppressRealtimeRef = useRef(false);
 
   const loadAll = useCallback(async () => {
@@ -31,7 +28,6 @@ export function useInventoryData(role) {
       setModels((mdls || []).map(m => ({ ...m, bom: bomByModel[m.id] || [] })));
       setTransactions(txs || []);
 
-      // stock_log is admin-only per RLS — only fetch when the signed-in role can read it
       if (role === 'admin') {
         const { data: logs, error: e5 } = await supabase.from('stock_log').select('*').order('created_at', { ascending: false }).limit(2000);
         if (!e5) setStockLog(logs || []);
@@ -47,9 +43,6 @@ export function useInventoryData(role) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Realtime: any device's change refreshes everyone else automatically —
-  // except while WE are mid-way through our own multi-step batch write (see
-  // suppressRealtimeRef above), to avoid flickering through partial state.
   useEffect(() => {
     const handleRealtimeChange = () => { if (!suppressRealtimeRef.current) loadAll(); };
     const channel = supabase
@@ -67,16 +60,6 @@ export function useInventoryData(role) {
 
   async function produceUnit(model, orderRef, staffName, userId, note = '') {
     suppressRealtimeRef.current = true;
-    // Duplicate check runs against the LIVE database (not local state) right
-    // before inserting, so it catches duplicates against both open orders
-    // and full history, and stays correct even if another device just
-    // created the same code moments ago. Skipped entirely for the repair/
-    // misc category, where reusing the same customer code is normal and
-    // expected (repeat repair visits, R&D test withdrawals, etc). For every
-    // other category, the same code is allowed across DIFFERENT models —
-    // e.g. one person withdraws drivers under one CIEM model while another
-    // withdraws packaging under a different model, same customer code — only
-    // an exact repeat of the same code AND same model is blocked.
     const isRepair = /ซ่อม/.test(model.category || '');
     if (!isRepair && model.id) {
       const { data: dupes } = await supabase.from('transactions').select('order_ref, model_name, created_at')
@@ -86,9 +69,6 @@ export function useInventoryData(role) {
       }
     }
 
-    // This now only files a REQUEST — nothing is deducted yet. The stock lead
-    // picks each material line individually (pickLine) once it's physically
-    // handed over, and that's the moment stock actually gets deducted.
     const bomSnapshot = (model.bom || []).map(b => ({
       material_id: b.material_id,
       material_name: materialsById[b.material_id]?.name || '',
@@ -102,9 +82,6 @@ export function useInventoryData(role) {
       order_ref: orderRef, staff_name: staffName, bom_snapshot: bomSnapshot, created_by: userId, note,
     });
     if (error) {
-      // 23505 = unique_violation — the DB-level safety net catching a race
-      // condition (two people submitting the same code at the exact same
-      // moment), just in case the pre-check above was juuust missed.
       if (error.code === '23505') return { error: `รหัส/ชื่อลูกค้า "${orderRef.trim()}" เพิ่งถูกใช้ไปแล้วเมื่อครู่นี้ — กรุณาใช้รหัสอื่น` };
       return { error: error.message };
     }
@@ -136,10 +113,6 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // One tick marks a material picked across EVERY open order that still needs
-  // it — instead of ticking the same material once per order. Still writes a
-  // separate stock_log line per order underneath, so month-end reconciliation
-  // against the master plan stays accurate down to the individual order code.
   async function bulkPickMaterial(materialId, userId, onProgress, reload = true) {
     const affected = transactions.filter(t => t.bom_snapshot.some(b => b.material_id === materialId && !b.picked));
     if (affected.length === 0) return { error: null };
@@ -165,9 +138,7 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // Batch version: stage many materials in the UI, then confirm ALL of them
-  // in one action — only reloads/re-renders ONCE at the end instead of once
-  // per tick, so the screen doesn't jump around while ticking things off.
+  // ✅ แก้ไข: รวมการเบิกทีละหลายรายการให้คำนวณใน Memory ก่อนยิง DB
   async function bulkPickMaterials(materialIds, userId, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
@@ -202,10 +173,6 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // Staff-side confirmation that they physically received this line — a
-  // second, independent checklist from the stock lead's "picked" one. Doesn't
-  // touch stock or logs at all; it's purely a cross-check to catch mistakes
-  // on either side (wrong item handed over, wrong quantity counted, etc).
   async function confirmReceived(tx, materialId, reload = true) {
     const line = tx.bom_snapshot.find(b => b.material_id === materialId);
     if (!line || line.received) return { error: null };
@@ -218,17 +185,50 @@ export function useInventoryData(role) {
     return { error: null };
   }
 
-  // Batch version, same idea as bulkPickMaterials: stage several confirmations
-  // in the UI, submit them all in one action, one reload at the end.
+  // ✅ FIXED: แก้ไขฟังก์ชันนี้ให้รวมรายการที่ถูกเลือกใน Transaction เดียวกันก่อน แล้วยิงอัปเดตครั้งเดียวจบ
   async function confirmReceivedBatch(items, onProgress) {
     suppressRealtimeRef.current = true;
     const errors = [];
-    let done = 0;
-    for (const { tx, materialId } of items) {
-      const { error } = await confirmReceived(tx, materialId, false);
-      if (error) errors.push(error);
-      done++; onProgress?.(done, items.length);
+    try {
+      if (!items || items.length === 0) return { errors: [] };
+
+      // 1. จัดกลุ่มรายการตามTransaction ID
+      const itemsByTx = {};
+      items.forEach(({ tx, materialId }) => {
+        if (!itemsByTx[tx.id]) {
+          itemsByTx[tx.id] = { tx, materialIds: [] };
+        }
+        itemsByTx[tx.id].materialIds.push(materialId);
+      });
+
+      const txKeys = Object.keys(itemsByTx);
+      let done = 0;
+
+      // 2. วนลูปอัปเดต DB โดยยิง 1 Request ต่อ 1 Transaction (รวมทุกรายการที่ติ๊กใน Transaction นั้นแล้ว)
+      for (const txId of txKeys) {
+        const { tx, materialIds } = itemsByTx[txId];
+        
+        // คำนวณ nextSnapshot รวดเดียวใน Memory
+        const nextSnapshot = tx.bom_snapshot.map(b => 
+          materialIds.includes(b.material_id) ? { ...b, received: true } : b
+        );
+
+        const { error } = await supabase
+          .from('transactions')
+          .update({ bom_snapshot: nextSnapshot })
+          .eq('id', txId);
+
+        if (error) {
+          errors.push(error.message);
+        }
+
+        done += materialIds.length;
+        onProgress?.(done, items.length);
+      }
+    } catch (err) {
+      errors.push(err.message || 'เกิดข้อผิดพลาดในการยืนยัน');
     }
+
     await loadAll();
     suppressRealtimeRef.current = false;
     return { errors };
@@ -236,16 +236,10 @@ export function useInventoryData(role) {
 
   async function cancelTransaction(tx, userId) {
     suppressRealtimeRef.current = true;
-    // Delete first and check what actually got removed — RLS silently allows a
-    // delete call to "succeed" with zero rows affected if the policy blocks it
-    // (e.g. a staff member's 30-minute self-cancel window has expired, or it's
-    // not their own order). Only restore stock if the row was truly deleted,
-    // otherwise we'd double-count materials while the order stays on record.
     const { data: deleted, error } = await supabase.from('transactions').delete().eq('id', tx.id).select();
     if (error || !deleted || deleted.length === 0) {
       return { error: 'ยกเลิกไม่สำเร็จ — อาจเกิน 30 นาทีแล้ว หรือไม่ใช่ออเดอร์ของคุณ ให้หัวหน้าช่างยกเลิกแทน' };
     }
-    // Only lines that were already picked actually deducted stock — only those need restoring.
     const pickedLines = tx.bom_snapshot.filter(b => b.picked);
     for (const b of pickedLines) {
       const m = materialsById[b.material_id];
