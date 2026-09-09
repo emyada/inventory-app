@@ -47,21 +47,12 @@ export function useInventoryData(role) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Realtime: any device's change refreshes everyone else automatically —
-  // except while WE are mid-way through our own multi-step batch write (see
-  // suppressRealtimeRef above), to avoid flickering through partial state.
-  useEffect(() => {
-    const handleRealtimeChange = () => { if (!suppressRealtimeRef.current) loadAll(); };
-    const channel = supabase
-      .channel('inventory-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, handleRealtimeChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'models' }, handleRealtimeChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'model_bom' }, handleRealtimeChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, handleRealtimeChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_log' }, handleRealtimeChange)
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [loadAll]);
+  // Realtime was removed on purpose: a single reload updates several pieces
+  // of state one after another (materials, models, transactions, stockLog),
+  // and with realtime also firing its own reload on every intermediate DB
+  // write during a batch action, the pick-queue/recheck screens flickered
+  // rapidly per material. Manual refresh (the refresh button + pull-to-
+  // refresh in the top bar) is what keeps other devices in sync now.
 
   const materialsById = Object.fromEntries(materials.map(m => [m.id, m]));
 
