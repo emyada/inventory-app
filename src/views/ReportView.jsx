@@ -13,11 +13,21 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
   const [sendingMat, setSendingMat] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
 
-  // 1. กรองออเดอร์ตามช่วงวันที่เลือก
-  const filtered = transactions.filter(t => {
-    const date = t.created_at?.slice(0, 10);
-    return date >= from && date <= to;
-  });
+  // แปลงฟอร์แมต YYYY-MM-DD -> DD/MM/YYYY (เช่น 2026-09-01 -> 01/09/2026)
+  const formatDateTH = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  };
+
+  // 1. กรองออเดอร์ตามช่วงวันที่เลือก และเรียงจากต้นเดือนไปสิ้นเดือน (เก่า -> ใหม่)
+  const filtered = transactions
+    .filter(t => {
+      const date = t.created_at?.slice(0, 10);
+      return date >= from && date <= to;
+    })
+    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
 
   // 2. จัดกลุ่มออเดอร์ตามหมวดหมู่และรุ่น
   const byCategory = {};
@@ -28,7 +38,56 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     byCategory[t.category].txs.push(t);
   });
 
-  // 3. สรุปยอดการใช้วัตถุดิบรวม
+  // 3. สรุปรายการเบิกตามวันที่จริง เพื่อใช้ทำ Filter รายวันใน Sheet
+  const rowsSummaryExport = () => {
+    return filtered.map(t => ({
+      วันที่: formatDateTH(t.created_at?.slice(0, 10)),
+      เวลา: t.created_at?.slice(11, 16) || '',
+      หมวดหมู่: t.category,
+      รุ่นสินค้า: t.model_name,
+      ออเดอร์: t.order_ref || '',
+      ช่างผู้ผลิต: t.staff_name || '',
+      จำนวน: 1
+    }));
+  };
+
+  const rowsMaterialExport = () => {
+    const matRows = [];
+    filtered.forEach(t => {
+      const dateFormatted = formatDateTH(t.created_at?.slice(0, 10));
+      t.bom_snapshot?.forEach(b => {
+        matRows.push({
+          วันที่: dateFormatted,
+          ชื่อวัตถุดิบ: b.material_name,
+          จำนวนที่ใช้: b.qty,
+          หน่วย: b.unit,
+          รุ่นสินค้า: t.model_name,
+          ออเดอร์: t.order_ref || ''
+        });
+      });
+    });
+    return matRows;
+  };
+
+  // ส่ง Sheet 1: ProductionReport
+  async function handleSendProdSheet() {
+    setSendingProd(true);
+    setSendMsg('กำลังส่งข้อมูลสินค้า...');
+    const { error } = await sendToGoogleSheet(sheetsWebhookUrl, 'ProductionReport', rowsSummaryExport());
+    setSendMsg(error || 'ส่งข้อมูลสินค้าเข้า Google Sheet เรียบร้อยแล้ว');
+    setSendingProd(false);
+  }
+
+  // ส่ง Sheet 2: MaterialsReport
+  async function handleSendMatSheet() {
+    setSendingMat(true);
+    setSendMsg('กำลังส่งข้อมูลวัตถุดิบ...');
+    const { error } = await sendToGoogleSheet(sheetsWebhookUrl, 'MaterialsReport', rowsMaterialExport());
+    setSendMsg(error || 'ส่งข้อมูลวัตถุดิบเข้า Google Sheet เรียบร้อยแล้ว');
+    setSendingMat(false);
+  }
+
+  // 4. สรุปยอดรวมวัตถุดิบสำหรับแสดงบนหน้า Dashboard
   const materialUsage = {};
   filtered.forEach(t => {
     t.bom_snapshot?.forEach(b => {
@@ -39,49 +98,6 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     });
   });
   const materialList = Object.values(materialUsage).sort((a, b) => b.qty - a.qty);
-
-// 4. โครงสร้างข้อมูลสำหรับ Export / Google Sheet
-  const rowsSummaryExport = () => {
-    const rows = [];
-    CATEGORIES.forEach(cat => {
-      if (byCategory[cat]) {
-        Object.entries(byCategory[cat].models).forEach(([model, count]) => {
-          rows.push({ 
-            ช่วงวันที่: `${from} ถึง ${to}`, // <-- เพิ่มคอลัมน์นี้เข้ามารายงาน
-            หมวดหมู่: cat, 
-            รุ่นสินค้า: model, 
-            จำนวนที่ผลิต: count 
-          });
-        });
-      }
-    });
-    return rows;
-  };
-
-  const rowsMaterialExport = () => materialList.map(m => ({
-    ช่วงวันที่: `${from} ถึง ${to}`, // <-- เพิ่มคอลัมน์นี้เข้ามารายงาน
-    ชื่อวัตถุดิบ: m.name, 
-    ยอดเบิกรวม: m.qty, 
-    หน่วย: m.unit
-  }));
-
-// ส่ง Sheet 1: ProductionReport (สรุปยอดผลิต + แนบช่วงวันที่)
-  async function handleSendProdSheet() {
-    setSendingProd(true);
-    setSendMsg('กำลังส่งสรุปสินค้า...');
-    const { error } = await sendToGoogleSheet(sheetsWebhookUrl, 'ProductionReport', rowsSummaryExport());
-    setSendMsg(error || 'ส่งสรุปสินค้าเข้า Google Sheet เรียบร้อยแล้ว');
-    setSendingProd(false);
-  }
-
-  // ส่ง Sheet 2: MaterialsReport (สรุปวัตถุดิบ + แนบช่วงวันที่)
-  async function handleSendMatSheet() {
-    setSendingMat(true);
-    setSendMsg('กำลังส่งสรุปวัตถุดิบ...');
-    const { error } = await sendToGoogleSheet(sheetsWebhookUrl, 'MaterialsReport', rowsMaterialExport());
-    setSendMsg(error || 'ส่งสรุปวัตถุดิบเข้า Google Sheet เรียบร้อยแล้ว');
-    setSendingMat(false);
-  }
 
   return (
     <div style={{ paddingBottom: 20 }}>
@@ -103,13 +119,13 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
         </button>
       </div>
 
-      {/* ปุ่ม Export CSV & Google Sheet แยกชัดเจน */}
+      {/* ปุ่ม Export CSV & Google Sheet */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
-        <button onClick={() => downloadCSV(`summary_prod_${from}_to_${to}.csv`, toCSV(rowsSummaryExport(), ['ช่วงวันที่', 'หมวดหมู่', 'รุ่นสินค้า', 'จำนวนที่ผลิต']))} style={{ ...btnGhost, justifyContent: 'center', fontSize: 11 }}>
-          <Download size={12} style={{ marginRight: 4 }} /> CSV สรุปสินค้า
+        <button onClick={() => downloadCSV(`prod_${from}_to_${to}.csv`, toCSV(rowsSummaryExport(), ['วันที่', 'เวลา', 'หมวดหมู่', 'รุ่นสินค้า', 'ออเดอร์', 'ช่างผู้ผลิต', 'จำนวน']))} style={{ ...btnGhost, justifyContent: 'center', fontSize: 11 }}>
+          <Download size={12} style={{ marginRight: 4 }} /> CSV สินค้า
         </button>
-        <button onClick={() => downloadCSV(`summary_mat_${from}_to_${to}.csv`, toCSV(rowsMaterialExport(), ['ช่วงวันที่', 'ชื่อวัตถุดิบ', 'ยอดเบิกรวม', 'หน่วย']))} style={{ ...btnGhost, justifyContent: 'center', fontSize: 11 }}>
-          <Package size={12} style={{ marginRight: 4 }} /> CSV สรุปวัตถุดิบ
+        <button onClick={() => downloadCSV(`mat_${from}_to_${to}.csv`, toCSV(rowsMaterialExport(), ['วันที่', 'ชื่อวัตถุดิบ', 'จำนวนที่ใช้', 'หน่วย', 'รุ่นสินค้า', 'ออเดอร์']))} style={{ ...btnGhost, justifyContent: 'center', fontSize: 11 }}>
+          <Package size={12} style={{ marginRight: 4 }} /> CSV วัตถุดิบ
         </button>
       </div>
 
@@ -207,7 +223,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
                     <div key={t.id} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 9, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 600 }}>{t.model_name}</div>
-                        <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref} · ช่าง {t.staff_name} · {t.created_at.slice(0, 10)}</div>
+                        <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref} · ช่าง {t.staff_name} · {formatDateTH(t.created_at.slice(0, 10))}</div>
                         {t.note && <div style={{ fontSize: 10.5, color: C.amber, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>เหตุผล: {t.note}</div>}
                       </div>
                       <button onClick={() => onCancel(t)} style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 7, padding: 5, color: C.red, cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
