@@ -36,3 +36,12 @@ input[type="date"] { color-scheme: dark; }
     align-items: start;
   }
 }
+/* ---- ปรับสเกลหน้าจอสำหรับมือถือให้อ่านง่ายขึ้น (ขยายสเกลรวม) ---- */
+html {
+  font-size: 112.5%; /* ขยายขนาดตัวหนังสือพื้นฐานขึ้นประมาณ 12% */
+}
+
+/* เพิ่มความสะดวกในการกดบนจอมือถือ */
+button, input, select {
+  touch-action: manipulation;
+}
