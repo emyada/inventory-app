@@ -14,7 +14,6 @@ export const mono = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
 };
 
-// ขยายขนาดปุ่มพื้นฐานให้อยู่ที่ 42px (ระดับกดง่ายมาตรฐานแอปมือถือ)
 export const btnGhost = {
   display: 'flex',
   alignItems: 'center',
