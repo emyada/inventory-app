@@ -65,7 +65,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     หน่วย: m.unit
   }));
 
-  // ส่ง Sheet 1: ProductionReport (สรุปยอดผลิต)
+// ส่ง Sheet 1: ProductionReport (สรุปยอดผลิต + แนบช่วงวันที่)
   async function handleSendProdSheet() {
     setSendingProd(true);
     setSendMsg('กำลังส่งสรุปสินค้า...');
@@ -74,7 +74,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     setSendingProd(false);
   }
 
-  // ส่ง Sheet 2: MaterialsReport (สรุปวัตถุดิบ)
+  // ส่ง Sheet 2: MaterialsReport (สรุปวัตถุดิบ + แนบช่วงวันที่)
   async function handleSendMatSheet() {
     setSendingMat(true);
     setSendMsg('กำลังส่งสรุปวัตถุดิบ...');
