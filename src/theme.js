@@ -1,39 +1,30 @@
 export const C = {
-  bg: '#121316',
-  panel: '#1E2026',
-  panelAlt: '#252830',
-  line: '#2B2D31',
-  text: '#F3F4F6',
-  textDim: '#9CA3AF',
-  amber: '#F59E0B',
-  teal: '#10B981',
-  red: '#EF4444',
+  bg: '#16181C',
+  panel: '#1F2227',
+  panelAlt: '#252932',
+  line: '#33383F',
+  text: '#EDEAE2',
+  textDim: '#9A9FA8',
+  amber: '#E8A33D',
+  teal: '#3FA796',
+  red: '#D97757',
+  redDim: '#8C4A3E',
 };
+export const mono = { fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace" };
+export const sans = { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" };
 
-export const mono = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-};
+export const REPAIR_LABEL = 'ซ่อมและอื่นๆ';
+export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', REPAIR_LABEL];
+export const REPAIR_SUBTYPES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'อื่นๆ'];
+export function isRepairCategory(cat) { return /ซ่อม/.test(cat || ''); }
+export const UNIT_OPTIONS = ['g', 'kg', 'ml', 'l', 'pcs', 'set', 'pack', 'ชิ้น', 'คู่', 'ม้วน', 'แผ่น', 'ห่อ', 'กล่อง', 'เมตร', 'อื่นๆ'];
 
-export const btnGhost = {
-  display: 'flex',
-  alignItems: 'center',
-  padding: '10px 14px',
-  minHeight: '42px',
-  fontSize: '14px',
-  fontWeight: '600',
-  color: C.text,
-  backgroundColor: C.panel,
-  border: `1px solid ${C.line}`,
-  borderRadius: '10px',
-  cursor: 'pointer',
-};
+export const inputStyle = { width: '100%', background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 7, padding: '8px 10px', color: C.text, fontSize: 13, boxSizing: 'border-box' };
+export const btnPrimary = { background: C.amber, color: C.bg, border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+export const btnGhost = { background: 'none', border: `1px solid ${C.line}`, color: C.text, borderRadius: 8, padding: '7px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center' };
+export const stepperBtn = { background: C.panelAlt, border: `1px solid ${C.line}`, color: C.text, borderRadius: 7, padding: '8px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+export const tabBtn = { flex: 1, background: 'none', border: `1px solid ${C.line}`, color: C.textDim, borderRadius: 8, padding: '7px 8px', fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 };
+export const tabBtnActive = { background: 'rgba(232,163,61,0.14)', borderColor: C.amber, color: C.amber };
 
-export const CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'ซ่อมและอื่นๆ'];
-
-export const todayStr = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return year + '-' + month + '-' + day;
-};
+export function todayStr() { return new Date().toISOString().slice(0, 10); }
+export function monthStartStr() { return todayStr().slice(0, 8) + '01'; }
