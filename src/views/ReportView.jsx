@@ -13,7 +13,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
   const [sendingMat, setSendingMat] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
 
-  // แปลงฟอร์แมต YYYY-MM-DD -> DD/MM/YYYY (เช่น 2026-09-01 -> 01/09/2026)
+  // แปลงฟอร์แมต YYYY-MM-DD -> DD/MM/YYYY
   const formatDateTH = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -21,7 +21,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   };
 
-  // 1. กรองออเดอร์ตามช่วงวันที่เลือก และเรียงจากต้นเดือนไปสิ้นเดือน (เก่า -> ใหม่)
+  // กรองตามวันที่เลือก + เรียงจากต้นเดือนไปสิ้นเดือน (เก่า -> ใหม่)
   const filtered = transactions
     .filter(t => {
       const date = t.created_at?.slice(0, 10);
@@ -29,7 +29,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     })
     .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
 
-  // 2. จัดกลุ่มออเดอร์ตามหมวดหมู่และรุ่น
+  // จัดกลุ่มออเดอร์ตามหมวดหมู่
   const byCategory = {};
   filtered.forEach(t => {
     if (!byCategory[t.category]) byCategory[t.category] = { total: 0, models: {}, txs: [] };
@@ -38,7 +38,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     byCategory[t.category].txs.push(t);
   });
 
-  // 3. สรุปรายการเบิกตามวันที่จริง เพื่อใช้ทำ Filter รายวันใน Sheet
+  // เตรียมข้อมูล Export
   const rowsSummaryExport = () => {
     return filtered.map(t => ({
       วันที่: formatDateTH(t.created_at?.slice(0, 10)),
@@ -69,7 +69,6 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     return matRows;
   };
 
-  // ส่ง Sheet 1: ProductionReport
   async function handleSendProdSheet() {
     setSendingProd(true);
     setSendMsg('กำลังส่งข้อมูลสินค้า...');
@@ -78,7 +77,6 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     setSendingProd(false);
   }
 
-  // ส่ง Sheet 2: MaterialsReport
   async function handleSendMatSheet() {
     setSendingMat(true);
     setSendMsg('กำลังส่งข้อมูลวัตถุดิบ...');
@@ -87,7 +85,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
     setSendingMat(false);
   }
 
-  // 4. สรุปยอดรวมวัตถุดิบสำหรับแสดงบนหน้า Dashboard
+  // สรุปยอดวัตถุดิบ
   const materialUsage = {};
   filtered.forEach(t => {
     t.bom_snapshot?.forEach(b => {
@@ -105,7 +103,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
       
       <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
 
-      {/* สลับแท็บ */}
+      {/* แท็บสลับหน้า */}
       <div style={{ display: 'flex', gap: 6, margin: '12px 0', background: C.panelAlt, padding: 3, borderRadius: 10 }}>
         <button 
           onClick={() => setActiveTab('dashboard')} 
@@ -119,7 +117,7 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
         </button>
       </div>
 
-      {/* ปุ่ม Export CSV & Google Sheet */}
+      {/* ปุ่ม Export */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
         <button onClick={() => downloadCSV(`prod_${from}_to_${to}.csv`, toCSV(rowsSummaryExport(), ['วันที่', 'เวลา', 'หมวดหมู่', 'รุ่นสินค้า', 'ออเดอร์', 'ช่างผู้ผลิต', 'จำนวน']))} style={{ ...btnGhost, justifyContent: 'center', fontSize: 11 }}>
           <Download size={12} style={{ marginRight: 4 }} /> CSV สินค้า
@@ -143,22 +141,17 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
       {/* TAB 1: DASHBOARD */}
       {activeTab === 'dashboard' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
-            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, textAlign: 'center' }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>ผลิตรวม</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.amber, ...mono }}>{filtered.length}</div>
-              <div style={{ fontSize: 9.5, color: C.textDim }}>ชิ้น/คู่</div>
-            </div>
-            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, textAlign: 'center' }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>หมวดหมู่</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.teal, ...mono }}>{Object.keys(byCategory).length}</div>
-              <div style={{ fontSize: 9.5, color: C.textDim }}>หมวดที่มีการผลิต</div>
-            </div>
-            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, textAlign: 'center' }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>วัตถุดิบที่ใช้</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.teal, ...mono }}>{materialList.length}</div>
-              <div style={{ fontSize: 9.5, color: C.textDim }}>รายการ</div>
-            </div>
+          {/* การ์ดสรุปแยกตามหมวดหมู่ (โทนสีธีมเดิม) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 8, marginBottom: 16 }}>
+            {CATEGORIES.map(cat => {
+              const count = byCategory[cat]?.total || 0;
+              return (
+                <div key={cat} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '12px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, marginBottom: 4 }}>{cat}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: count > 0 ? C.amber : C.text, ...mono }}>{count}</div>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
