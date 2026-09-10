@@ -1,38 +1,18 @@
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; padding: 0; }
-body {
-  background: #16181C;
-  -webkit-font-smoothing: antialiased;
-}
-input, select, button { font-family: inherit; }
-input[type="date"] { color-scheme: dark; }
-
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.animate-spin { animation: spin 0.8s linear infinite; }
-
-/* ---- Responsive shell: full-width phone layout on mobile,
-   wider centered layout with 2-column grids on desktop ---- */
-.app-shell {
-  width: 100%;
-  max-width: 480px;
-  margin: 0 auto;
-  height: 100vh;   /* fallback for older browsers */
-  height: 100dvh;  /* accounts for mobile browser chrome correctly */
-}
-.grid-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* ปรับสเกลตัวหนังสือหลักทั้งระบบให้เท่าแอปมาตรฐาน (14px - 15px) */
+html, body {
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
 }
 
-@media (min-width: 860px) {
-  .app-shell {
-    max-width: 840px;
-  }
-  .grid-list {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    align-items: start;
-  }
+/* เพิ่ม Touch Target ให้ปุ่ม/ช่องกรอกบนมือถือให้กดง่าย ไม่เบียด */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+/* ขยายช่องว่างระหว่างคอนเทนเนอร์บนมือถือ */
+.container, main {
+  padding-left: 12px;
+  padding-right: 12px;
 }
