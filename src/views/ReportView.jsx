@@ -40,13 +40,18 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
   });
   const materialList = Object.values(materialUsage).sort((a, b) => b.qty - a.qty);
 
-  // 4. โครงสร้างข้อมูลสำหรับ Export / Google Sheet
+// 4. โครงสร้างข้อมูลสำหรับ Export / Google Sheet
   const rowsSummaryExport = () => {
     const rows = [];
     CATEGORIES.forEach(cat => {
       if (byCategory[cat]) {
         Object.entries(byCategory[cat].models).forEach(([model, count]) => {
-          rows.push({ ช่วงวันที่: `${from} ถึง ${to}`, หมวดหมู่: cat, รุ่นสินค้า: model, จำนวนที่ผลิต: count });
+          rows.push({ 
+            ช่วงวันที่: `${from} ถึง ${to}`, // <-- เพิ่มคอลัมน์นี้เข้ามารายงาน
+            หมวดหมู่: cat, 
+            รุ่นสินค้า: model, 
+            จำนวนที่ผลิต: count 
+          });
         });
       }
     });
@@ -54,7 +59,10 @@ export function ReportView({ transactions, onCancel, sheetsWebhookUrl }) {
   };
 
   const rowsMaterialExport = () => materialList.map(m => ({
-    ช่วงวันที่: `${from} ถึง ${to}`, ชื่อวัตถุดิบ: m.name, ยอดเบิกรวม: m.qty, หน่วย: m.unit
+    ช่วงวันที่: `${from} ถึง ${to}`, // <-- เพิ่มคอลัมน์นี้เข้ามารายงาน
+    ชื่อวัตถุดิบ: m.name, 
+    ยอดเบิกรวม: m.qty, 
+    หน่วย: m.unit
   }));
 
   // ส่ง Sheet 1: ProductionReport (สรุปยอดผลิต)
