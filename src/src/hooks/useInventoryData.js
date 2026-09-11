@@ -274,8 +274,9 @@ export function useInventoryData(role) {
 
   async function saveMaterial(m) {
     suppressRealtimeRef.current = true;
-    if (m.id) await supabase.from('materials').update({ name: m.name, unit: m.unit, qty: m.qty }).eq('id', m.id);
-    else await supabase.from('materials').insert({ name: m.name, unit: m.unit, qty: m.qty });
+    const payload = { name: m.name, unit: m.unit, qty: m.qty, low_stock_threshold: m.low_stock_threshold ?? 2 };
+    if (m.id) await supabase.from('materials').update(payload).eq('id', m.id);
+    else await supabase.from('materials').insert(payload);
     await loadAll();
     suppressRealtimeRef.current = false;
   }
@@ -324,7 +325,7 @@ export function useInventoryData(role) {
 
   const today = todayStr();
   const todaysTx = transactions.filter(t => t.created_at?.slice(0, 10) === today);
-  const lowStock = materials.filter(m => m.qty <= 2);
+  const lowStock = materials.filter(m => m.qty <= (m.low_stock_threshold ?? 2));
 
   return {
     loading, error, materials, models, transactions, stockLog, materialsById, todaysTx, lowStock,
