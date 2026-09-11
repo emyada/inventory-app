@@ -2,6 +2,15 @@ import React, { useRef, useState } from 'react';
 import { Check, Package, Save, Trash2, Clock } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
+// รายชื่อรุ่นที่ไม่ต้องติ๊กรับของ (ยกเว้นเฉพาะ 5 รุ่นนี้)
+const EXCLUDED_MODELS = [
+  'Sleepplug',
+  'Sleepplug Glow',
+  'Sleepplug-Glow-ข้างเดียว',
+  'Sleepplug-ข้างเดียว',
+  'Sleepplug-ตัน'
+];
+
 function pickStatus(bomSnapshot) {
   const total = bomSnapshot.length;
   const done = bomSnapshot.filter(b => b.received).length;
@@ -15,14 +24,15 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
 
+  // กรองเฉพาะออเดอร์ของผู้ใช้นี้ และไม่อยู่ในรุ่นที่ยกเว้น 5 รุ่นด้านบน
   const myOrders = transactions.filter(t => t.created_by === userId);
+  const myRecheckOrders = myOrders.filter(t => !EXCLUDED_MODELS.includes(t.model_name));
 
-  // Every not-yet-received line, across all of my orders where the stock
-  // lead has already picked it — grouped by material so I don't have to
-  // tick the same item once per order.
+  // รวมรายการของที่รอเช็ครับ เฉพาะออเดอร์ที่ไม่โดนยกเว้น
   const totals = {};
   const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
-  myOrders.forEach(t => {
+  
+  myRecheckOrders.forEach(t => {
     t.bom_snapshot.filter(b => b.picked && !b.received).forEach(b => {
       const key = b.material_id;
       if (!totals[key]) totals[key] = { name: b.material_name, unit: b.unit, qty: 0, refs: [] };
@@ -30,11 +40,13 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
       totals[key].refs.push({ txId: t.id, materialId: b.material_id, tx: t });
     });
   });
+  
   const totalRows = Object.entries(totals).map(([id, v]) => ({ id, ...v }));
 
   function isRowStaged(row) {
     return row.refs.every(r => stagedKeys.has(r.txId + r.materialId));
   }
+  
   function toggleRow(row) {
     const allStaged = isRowStaged(row);
     setStaged(s => {
