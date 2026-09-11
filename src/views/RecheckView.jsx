@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { Check, Package, Save, Trash2, Calendar } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
-// รายชื่อรุ่นที่ไม่ต้องให้ช่างกดติ๊กรับซ้ำ ( auto-received เมื่อหัวหน้าจ่ายของ)
 const EXCLUDED_MODELS = [
   'Sleepplug',
   'Sleepplug Glow',
@@ -11,12 +10,10 @@ const EXCLUDED_MODELS = [
   'Sleepplug-ตัน'
 ];
 
-// รายชื่อหมวดหมู่ที่ไม่ต้องให้ช่างกดติ๊กรับซ้ำ
 const EXCLUDED_CATEGORIES = [
   'ซ่อมและอื่นๆ'
 ];
 
-// ฟังก์ชันดึงวันที่ปัจจุบันในรูปแบบ YYYY-MM-DD
 function getTodayString() {
   const today = new Date();
   const year = today.getFullYear();
@@ -38,23 +35,22 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [sub, setSub] = useState('active'); // active | history
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
+  
+  // เพิ่ม State สำหรับจำรายการที่เพิ่งกดรับสำเร็จ (ป้องกันหน้าจอค้าง)
+  const [confirmedKeys, setConfirmedKeys] = useState(new Set());
 
-  // State สำหรับ Date Filter (ค่าเริ่มต้นเป็นวันปัจจุบันทั้งเริ่มต้นและสิ้นสุด)
   const todayStr = getTodayString();
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
 
-  // ดึงเฉพาะออเดอร์ของช่างคนนี้
   const myOrders = transactions.filter(t => t.created_by === userId);
 
-  // กรองประวัติย้อนหลังตามช่วงวันที่ที่เลือก
   const historyOrders = myOrders.filter(t => {
     if (!t.created_at) return false;
     const txDate = t.created_at.slice(0, 10);
     return txDate >= startDate && txDate <= endDate;
   });
 
-  // กรองของที่หัวหน้าจ่ายมาแล้ว (picked) แต่ช่างยังไม่ได้กดรับ (received)
   const myRecheckOrders = myOrders.filter(t => 
     !EXCLUDED_MODELS.includes(t.model_name) &&
     !EXCLUDED_CATEGORIES.includes(t.category)
@@ -62,22 +58,26 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
 
   const totals = {};
   const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
-  
+
   myRecheckOrders.forEach(t => {
     t.bom_snapshot?.filter(b => b.picked && !b.received).forEach(b => {
+      const itemKey = t.id + b.material_id;
+      // ถ้าเคยยืนยันไปแล้วใน Session นี้ ให้ซ่อนออกทันที
+      if (confirmedKeys.has(itemKey)) return;
+
       const key = b.material_id;
       if (!totals[key]) totals[key] = { name: b.material_name, unit: b.unit, qty: 0, refs: [] };
       totals[key].qty += b.qty;
       totals[key].refs.push({ txId: t.id, materialId: b.material_id, tx: t });
     });
   });
-  
+
   const totalRows = Object.entries(totals).map(([id, v]) => ({ id, ...v }));
 
   function isRowStaged(row) {
     return row.refs.every(r => stagedKeys.has(r.txId + r.materialId));
   }
-  
+
   function toggleRow(row) {
     const allStaged = isRowStaged(row);
     setStaged(s => {
@@ -92,9 +92,18 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
     processingRef.current = true;
     setConfirming(true);
     try {
-      const { errors } = await onConfirmBatch(staged.map(s => ({ tx: s.tx, materialId: s.materialId })));
+      const result = await onConfirmBatch(staged.map(s => ({ tx: s.tx, materialId: s.materialId })));
+      
+      // บันทึก Keys ของรายการที่กดยืนยันแล้ว เพื่อเคลียร์ออกจาก UI ทันที
+      const justConfirmed = new Set(staged.map(s => s.txId + s.materialId));
+      setConfirmedKeys(prev => new Set([...prev, ...justConfirmed]));
       setStaged([]);
-      if (errors.length) alert(errors.join('\n'));
+
+      if (result?.errors && result.errors.length > 0) {
+        alert(result.errors.join('\n'));
+      }
+    } catch (err) {
+      console.error(err);
     } finally {
       processingRef.current = false;
       setConfirming(false);
@@ -146,7 +155,6 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
 
       {sub === 'history' && (
         <div>
-          {/* ช่องเลือกระหว่างวันที่ */}
           <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: C.textDim }}>
               <Calendar size={14} /> เลือกช่วงวันที่ต้องการดู
@@ -168,7 +176,6 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
             </div>
           </div>
 
-          {/* สรุปจำนวนรายการ */}
           <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8, paddingLeft: 2 }}>
             พบ {historyOrders.length} รายการ
           </div>
