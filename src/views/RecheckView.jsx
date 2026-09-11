@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Check, Package, Save, Trash2 } from 'lucide-react';
+import { Check, Package, Save, Trash2, Calendar } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
 // รายชื่อรุ่นที่ไม่ต้องให้ช่างกดติ๊กรับซ้ำ ( auto-received เมื่อหัวหน้าจ่ายของ)
@@ -16,8 +16,18 @@ const EXCLUDED_CATEGORIES = [
   'ซ่อมและอื่นๆ'
 ];
 
-function pickStatus(bomSnapshot) {
+// ฟังก์ชันดึงวันที่ปัจจุบันในรูปแบบ YYYY-MM-DD
+function getTodayString() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function pickStatus(bomSnapshot = []) {
   const total = bomSnapshot.length;
+  if (total === 0) return { label: 'ไม่มีรายการ', color: C.textDim };
   const done = bomSnapshot.filter(b => b.received).length;
   if (done === 0) return { label: 'รอเบิก', color: C.textDim };
   if (done === total) return { label: 'เบิกครบแล้ว', color: C.teal };
@@ -29,11 +39,22 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
 
+  // State สำหรับ Date Filter (ค่าเริ่มต้นเป็นวันปัจจุบันทั้งเริ่มต้นและสิ้นสุด)
+  const todayStr = getTodayString();
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+
   // ดึงเฉพาะออเดอร์ของช่างคนนี้
   const myOrders = transactions.filter(t => t.created_by === userId);
 
+  // กรองประวัติย้อนหลังตามช่วงวันที่ที่เลือก
+  const historyOrders = myOrders.filter(t => {
+    if (!t.created_at) return false;
+    const txDate = t.created_at.slice(0, 10);
+    return txDate >= startDate && txDate <= endDate;
+  });
+
   // กรองของที่หัวหน้าจ่ายมาแล้ว (picked) แต่ช่างยังไม่ได้กดรับ (received)
-  // และซ่อนออเดอร์ที่เป็นรุ่นยกเว้น/หมวดซ่อม ออกจากหน้าติ๊กของช่าง
   const myRecheckOrders = myOrders.filter(t => 
     !EXCLUDED_MODELS.includes(t.model_name) &&
     !EXCLUDED_CATEGORIES.includes(t.category)
@@ -43,7 +64,7 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
   
   myRecheckOrders.forEach(t => {
-    t.bom_snapshot.filter(b => b.picked && !b.received).forEach(b => {
+    t.bom_snapshot?.filter(b => b.picked && !b.received).forEach(b => {
       const key = b.material_id;
       if (!totals[key]) totals[key] = { name: b.material_name, unit: b.unit, qty: 0, refs: [] };
       totals[key].qty += b.qty;
@@ -124,24 +145,55 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
       )}
 
       {sub === 'history' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {myOrders.length === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ยังไม่มีประวัติการเบิก</div>}
-          {myOrders.map(t => {
-            const status = pickStatus(t.bom_snapshot);
-            return (
-              <div key={t.id} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 9, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t.model_name} <span style={{ color: C.textDim, fontWeight: 400, fontSize: 11 }}>· {t.category}</span></div>
-                  <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref} · {t.created_at.slice(0, 10)}</div>
-                  <div style={{ fontSize: 10.5, color: status.color, fontWeight: 600, marginTop: 2 }}>{status.label}</div>
+        <div>
+          {/* ช่องเลือกระหว่างวันที่ */}
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: C.textDim }}>
+              <Calendar size={14} /> เลือกช่วงวันที่ต้องการดู
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                style={{ flex: 1, background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 6, padding: '6px 8px', color: C.text, fontSize: 12 }}
+              />
+              <span style={{ fontSize: 12, color: C.textDim }}>ถึง</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                style={{ flex: 1, background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 6, padding: '6px 8px', color: C.text, fontSize: 12 }}
+              />
+            </div>
+          </div>
+
+          {/* สรุปจำนวนรายการ */}
+          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8, paddingLeft: 2 }}>
+            พบ {historyOrders.length} รายการ
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {historyOrders.length === 0 && (
+              <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีประวัติการเบิกในช่วงวันที่เลือก</div>
+            )}
+            {historyOrders.map(t => {
+              const status = pickStatus(t.bom_snapshot);
+              return (
+                <div key={t.id} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 9, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t.model_name} <span style={{ color: C.textDim, fontWeight: 400, fontSize: 11 }}>· {t.category}</span></div>
+                    <div style={{ fontSize: 10.5, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ออเดอร์ {t.order_ref} · {t.created_at?.slice(0, 10)}</div>
+                    <div style={{ fontSize: 10.5, color: status.color, fontWeight: 600, marginTop: 2 }}>{status.label}</div>
+                  </div>
+                  <button onClick={() => onCancel(t)} title="ยกเลิกออเดอร์นี้"
+                    style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 7, padding: 6, color: C.red, cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+                    <Trash2 size={13} />
+                  </button>
                 </div>
-                <button onClick={() => onCancel(t)} title="ยกเลิกออเดอร์นี้"
-                  style={{ background: 'none', border: `1px solid ${C.line}`, borderRadius: 7, padding: 6, color: C.red, cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
