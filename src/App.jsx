@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck, RefreshCw } from 'lucide-react';
+import { Package, Settings, ClipboardList, AlertTriangle, LogOut, SlidersHorizontal, Undo2, ListChecks, ClipboardCheck, RefreshCw, PackagePlus } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
@@ -44,6 +44,7 @@ function Workspace({ profile, role, signOut, userId }) {
   const [restockMaterial, setRestockMaterial] = useState(null);
   const [editingModel, setEditingModel] = useState(null);
   const [showRepairForm, setShowRepairForm] = useState(false);
+  const [showLowStock, setShowLowStock] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [pullDist, setPullDist] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -194,9 +195,10 @@ function Workspace({ profile, role, signOut, userId }) {
             </button>
           </div>
           {inv.lowStock.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: C.red, background: 'rgba(217,119,87,0.12)', padding: '5px 9px', borderRadius: 20, marginTop: 8, width: 'fit-content' }}>
+            <button onClick={() => setShowLowStock(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: C.red, background: 'rgba(217,119,87,0.12)', padding: '5px 9px', borderRadius: 20, marginTop: 8, width: 'fit-content', border: 'none', cursor: 'pointer' }}>
               <AlertTriangle size={12} /> ของใกล้หมด {inv.lowStock.length} รายการ
-            </div>
+            </button>
           )}
           {view === 'floor' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
@@ -257,6 +259,27 @@ function Workspace({ profile, role, signOut, userId }) {
 
         {showRepairForm && (
           <RepairRequestForm materials={inv.materials} onConfirm={handleRepairRequest} onClose={() => setShowRepairForm(false)} />
+        )}
+
+        {showLowStock && (
+          <Modal onClose={() => setShowLowStock(false)} title={`ของใกล้หมด (${inv.lowStock.length} รายการ)`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+              {inv.lowStock.map(m => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 10px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                    <div style={{ ...mono, fontSize: 12, color: C.red, fontWeight: 700, marginTop: 2 }}>
+                      เหลือ {m.qty} {m.unit} <span style={{ color: C.textDim, fontWeight: 400 }}>(เกณฑ์ ≤ {m.low_stock_threshold ?? 2})</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setShowLowStock(false); setRestockMaterial(m); }}
+                    style={{ background: 'rgba(63,167,150,0.14)', border: `1px solid ${C.teal}`, borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: C.teal, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <PackagePlus size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Modal>
         )}
 
         {cancelTx && (
