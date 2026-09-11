@@ -5,7 +5,7 @@ import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
 import { sendToGoogleSheet } from '../utils/sheets';
 
-export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
+export function StockView({ materials = [], stockLog = [], transactions = [], role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
   const [sub, setSub] = useState('current'); // current | history | balance
   const [search, setSearch] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
@@ -17,11 +17,50 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  // กรอง Log ตามช่วงวันที่
-  const filteredLog = stockLog.filter(l => {
+  // ฟังก์ชันช่วยแปลง Transaction (ผลิต/ซ่อม) เป็น Flat Log สำหรับคิดยอดเบิกออก
+  const getOutLogsFromTransactions = () => {
+    const outLogs = [];
+    transactions.forEach(tx => {
+      // สนใจเฉพาะ Transaction ที่อยู่ในสถานะปกติ (ไม่ยกเลิก)
+      if (tx.order_ref?.startsWith('ยกเลิก:')) return;
+      
+      const createdDate = tx.created_at?.slice(0, 10);
+      const bom = tx.bom_snapshot || [];
+
+      bom.forEach(b => {
+        // นับเฉพาะรายการที่ถูกหยิบ/เบิกออกไปแล้วจริง
+        if (b.picked) {
+          outLogs.push({
+            id: `tx-${tx.id}-${b.material_id}`,
+            created_at: tx.created_at,
+            date: createdDate,
+            type: 'out',
+            material_id: b.material_id,
+            material_name: b.material_name,
+            amount: Number(b.qty) || 0,
+            unit: b.unit || 'pcs',
+            order_ref: `เบิกผลิต: ${tx.order_ref} (${tx.model_name || ''})`,
+            staff_name: tx.staff_name || '',
+          });
+        }
+      });
+    });
+    return outLogs;
+  };
+
+  const txOutLogs = getOutLogsFromTransactions();
+
+  // กรอง Log เติมสต็อก (ซื้อเข้า) ตามช่วงวันที่
+  const filteredStockLog = stockLog.filter(l => {
     const d = l.created_at?.slice(0, 10);
     return d >= from && d <= to;
   });
+
+  // กรอง Log ตัดสต็อกเบิกผลิต ตามช่วงวันที่
+  const filteredTxOutLogs = txOutLogs.filter(l => l.date >= from && l.date <= to);
+
+  // รวม Log ทั้งหมดเข้าด้วยกัน
+  const allFilteredLogs = [...filteredStockLog, ...filteredTxOutLogs];
 
   // ตรวจจับรายการยกเลิกออเดอร์
   const cancelledOrderRefs = new Set(
@@ -35,16 +74,15 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     return ref.startsWith('ยกเลิก:') || cancelledOrderRefs.has(ref);
   };
 
-  // เช็กว่าเป็นรายการ "รับเข้า" หรือไม่
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
-  // สถิติเฉพาะรับเข้า
-  const restockCount = filteredLog.filter(l => isTypeIn(l) && !isCancelNoise(l)).length;
+  // จำนวนครั้งการรับเข้า
+  const restockCount = filteredStockLog.filter(l => isTypeIn(l) && !isCancelNoise(l)).length;
 
-  // ------------------ 1. ประวัติเข้า-ออก ------------------
+  // ------------------ 1. จัดกลุ่มประวัติเข้า-ออก ------------------
   const byMaterial = {};
-  filteredLog.forEach(l => {
-    if (isCancelNoise(l)) return; // ไม่นำรายการยกเลิกมารวมยอด
+  allFilteredLogs.forEach(l => {
+    if (isCancelNoise(l)) return;
     const key = (l.material_name || l.material_id || 'ไม่ระบุ').trim().toLowerCase();
     if (!byMaterial[key]) {
       byMaterial[key] = { id: key, name: l.material_name || 'ไม่ระบุ', unit: l.unit || '', in: 0, out: 0, entries: [] };
@@ -62,7 +100,7 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     .map(v => ({ ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
-  const rowsForExport = () => filteredLog.filter(l => !isCancelNoise(l)).map(l => ({
+  const rowsForExport = () => allFilteredLogs.filter(l => !isCancelNoise(l)).map(l => ({
     วันที่: l.created_at?.slice(0, 10) || '',
     ประเภท: isTypeIn(l) ? 'รับเข้า' : 'เบิกออก',
     วัตถุดิบ: l.material_name || '',
@@ -79,25 +117,29 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     setSending(false);
   }
 
-  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Cards) ------------------
+  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
+      const matId = String(m.id);
       const matNameClean = m.name?.trim().toLowerCase();
       
-      const logsForMaterial = stockLog.filter(l => {
-        if (isCancelNoise(l)) return false;
-        const lIdMatches = l.material_id && l.material_id === m.id;
+      // ดึง Log ทั้งรับเข้า และ เบิกออก ของวัตถุดิบชิ้นนี้
+      const allLogsForMat = [
+        ...stockLog.filter(l => !isCancelNoise(l)),
+        ...txOutLogs
+      ].filter(l => {
+        const lIdMatches = l.material_id && String(l.material_id) === matId;
         const lNameMatches = l.material_name && l.material_name.trim().toLowerCase() === matNameClean;
         return lIdMatches || lNameMatches;
       });
 
-      const within = logsForMaterial.filter(l => {
+      const within = allLogsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10);
         return d >= from && d <= to;
       });
 
-      const after = logsForMaterial.filter(l => {
+      const after = allLogsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10);
         return d > to;
       });
@@ -105,12 +147,13 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ยอดสุทธิหลังช่วงวันที่เลือก
+      // ผลกระทบหลังช่วงวันที่เลือก
       const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
         - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // คำนวณปลายงวด และ ต้นงวด อย่างถูกต้อง
+      // ยอดปลายงวด = สต๊อกปัจจุบัน - ยอดที่เกิดหลังช่วงวันที่เลือก
       const closing = Number(m.qty || 0) - netAfter;
+      // ยอดต้นงวด = ปลายงวด - รับเข้า + เบิกออก (ในช่วงวันที่เลือก)
       const opening = closing - inWithin + outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
@@ -187,11 +230,7 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
             </button>
           </div>
           {sendMsg && <div style={{ fontSize: 11.5, color: sendMsg.includes('แล้ว') ? C.teal : C.red, marginBottom: 10 }}>{sendMsg}</div>}
-          <div style={{ fontSize: 10, color: C.textDim, marginBottom: 10, lineHeight: 1.5 }}>
-            (การส่งออกไม่รวมรายการที่ยกเลิกไปแล้ว — ดูรายการยกเลิกได้จากประวัติด้านล่างในแอปเท่านั้น)
-          </div>
 
-          {/* ส่วนแสดง Card เฉพาะ "รับเข้า (ซื้อเข้าจริง)" เท่านั้น */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ background: 'rgba(63,167,150,0.1)', border: `1px solid ${C.teal}`, borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ fontSize: 11, color: C.textDim }}>รับเข้า (ซื้อเข้าจริง)</div>
