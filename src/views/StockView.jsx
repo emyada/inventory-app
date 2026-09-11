@@ -15,14 +15,10 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
   const [sendMsg, setSendMsg] = useState('');
   const [balSending, setBalSending] = useState(false);
   const [balSendMsg, setBalSendMsg] = useState('');
-  const [expanded, setExpanded] = useState(null); // material_id currently expanded, or null
+  const [expanded, setExpanded] = useState(null);
 
   const filteredLog = stockLog.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
 
-  // Cancelling an order writes a compensating "ยกเลิก: <order_ref>" entry —
-  // computed across the FULL log (not just the selected range) so a pick and
-  // its later cancellation still pair up correctly even if that happened on
-  // a different day, or outside the currently selected date window.
   const cancelledOrderRefs = new Set(
     stockLog.filter(l => l.order_ref?.startsWith('ยกเลิก:'))
       .map(l => l.order_ref.replace(/^ยกเลิก:\s*/, ''))
@@ -55,22 +51,28 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     setSending(false);
   }
 
-  // ---- Opening / closing balance ("stock card") per material ----
-  // Reconstructed backwards from the CURRENT live quantity using the full
-  // (all-time) log — accurate for any period as long as the log itself is
-  // complete, i.e. from whenever history was last reset onward.
+  // ---- แก้ไขตรรกะการคำนวณ ต้นงวด-ปลายงวด ให้ Match จาก ID + ชื่อวัตถุดิบ ----
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
-      const logsForMaterial = stockLog.filter(l => l.material_id === m.id && !isCancelNoise(l));
+      // จับคู่ Log ทั้งจาก material_id และ material_name เพื่อป้องกัน Log หลุด
+      const logsForMaterial = stockLog.filter(l => 
+        !isCancelNoise(l) && 
+        (l.material_id === m.id || l.material_name?.trim().toLowerCase() === m.name?.trim().toLowerCase())
+      );
+
       const within = logsForMaterial.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
       const after = logsForMaterial.filter(l => l.created_at?.slice(0, 10) > to);
+
       const inWithin = within.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0);
       const outWithin = within.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
+      
       const netAfter = after.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0)
         - after.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
-      const closing = m.qty - netAfter;
+
+      const closing = Number(m.qty || 0) - netAfter;
       const opening = closing - (inWithin - outWithin);
+
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'th'));
