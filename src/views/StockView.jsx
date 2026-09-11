@@ -5,8 +5,8 @@ import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
 import { sendToGoogleSheet } from '../utils/sheets';
 
-export function StockView({ materials = [], stockLog = [], transactions = [], role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
-  const [sub, setSub] = useState('current'); // current | history | balance
+export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
+  const [sub, setSub] = useState('current');
   const [search, setSearch] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
   const [from, setFrom] = useState(monthStartStr());
@@ -17,79 +17,48 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
- // คลุมดำทับฟังก์ชัน getOutLogsFromTransactions เดิมใน StockView.jsx ด้วยโค้ดนี้
-const getOutLogsFromTransactions = () => {
-  const outLogs = [];
-  transactions.forEach(tx => {
-    // 1. ข้าม Transaction ที่ถูกยกเลิก
-    if (tx.order_ref?.startsWith('ยกเลิก:')) return;
-    
-    const createdDate = tx.created_at?.slice(0, 10);
-    const bom = tx.bom_snapshot || [];
+  // ฟังก์ชันคลีนชื่อวัตถุดิบเพื่อเทียบกัน (ลบ _pcs, Space, ตัวพิมพ์เล็ก/ใหญ่)
+  const cleanName = (str) => {
+    if (!str) return '';
+    return String(str)
+      .toLowerCase()
+      .replace(/_pcs$/i, '')
+      .replace(/_g$/i, '')
+      .replace(/_ml$/i, '')
+      .replace(/\s+/g, '')
+      .trim();
+  };
 
-    bom.forEach(b => {
-      // 2. นับเฉพาะรายการที่ถูกหยิบจริง (picked === true)
-      if (b.picked) {
-        // ใช้ b.qty หรือ b.total_qty โดยตรง (ห้ามเอาไปคูณ tx.qty ซ้ำ)
-        const actualQty = Number(b.qty ?? b.total_qty ?? 0);
-
-        if (actualQty > 0) {
-          outLogs.push({
-            id: `tx-${tx.id}-${b.material_id}`,
-            created_at: tx.created_at,
-            date: createdDate,
-            type: 'out',
-            material_id: b.material_id,
-            material_name: b.material_name,
-            amount: actualQty,
-            unit: b.unit || 'pcs',
-            order_ref: `เบิกผลิต: ${tx.order_ref} (${tx.model_name || ''})`,
-            staff_name: tx.staff_name || '',
-          });
-        }
-      }
-    });
-  });
-  return outLogs;
-};
-  const txOutLogs = getOutLogsFromTransactions();
-
-  // กรอง Log เติมสต็อก (ซื้อเข้า) ตามช่วงวันที่
-  const filteredStockLog = stockLog.filter(l => {
-    const d = l.created_at?.slice(0, 10);
-    return d >= from && d <= to;
-  });
-
-  // กรอง Log ตัดสต็อกเบิกผลิต ตามช่วงวันที่
-  const filteredTxOutLogs = txOutLogs.filter(l => l.date >= from && l.date <= to);
-
-  // รวม Log ทั้งหมดเข้าด้วยกัน
-  const allFilteredLogs = [...filteredStockLog, ...filteredTxOutLogs];
-
-  // ตรวจจับรายการยกเลิกออเดอร์
-  const cancelledOrderRefs = new Set(
-    stockLog.filter(l => l.order_ref?.startsWith('ยกเลิก:'))
-      .map(l => l.order_ref.replace(/^ยกเลิก:\s*/, '').trim())
-  );
-  
   const isCancelNoise = (l) => {
     if (!l.order_ref) return false;
-    const ref = l.order_ref.trim();
-    return ref.startsWith('ยกเลิก:') || cancelledOrderRefs.has(ref);
+    return l.order_ref.trim().startsWith('ยกเลิก:');
   };
 
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
-  // จำนวนครั้งการรับเข้า
-  const restockCount = filteredStockLog.filter(l => isTypeIn(l) && !isCancelNoise(l)).length;
+  // กรอง Log ตามช่วงวันที่
+  const filteredStockLog = stockLog.filter(l => {
+    const d = l.created_at?.slice(0, 10);
+    return d >= from && d <= to && !isCancelNoise(l);
+  });
+
+  const restockCount = filteredStockLog.filter(l => isTypeIn(l)).length;
 
   // ------------------ 1. จัดกลุ่มประวัติเข้า-ออก ------------------
   const byMaterial = {};
-  allFilteredLogs.forEach(l => {
-    if (isCancelNoise(l)) return;
-    const key = (l.material_name || l.material_id || 'ไม่ระบุ').trim().toLowerCase();
+  filteredStockLog.forEach(l => {
+    const key = cleanName(l.material_name || l.material_id);
+    if (!key) return;
+
     if (!byMaterial[key]) {
-      byMaterial[key] = { id: key, name: l.material_name || 'ไม่ระบุ', unit: l.unit || '', in: 0, out: 0, entries: [] };
+      byMaterial[key] = { 
+        id: key, 
+        name: l.material_name || 'ไม่ระบุ', 
+        unit: l.unit || '', 
+        in: 0, 
+        out: 0, 
+        entries: [] 
+      };
     }
     const amt = Number(l.amount) || 0;
     if (isTypeIn(l)) {
@@ -104,7 +73,7 @@ const getOutLogsFromTransactions = () => {
     .map(v => ({ ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
-  const rowsForExport = () => allFilteredLogs.filter(l => !isCancelNoise(l)).map(l => ({
+  const rowsForExport = () => filteredStockLog.map(l => ({
     วันที่: l.created_at?.slice(0, 10) || '',
     ประเภท: isTypeIn(l) ? 'รับเข้า' : 'เบิกออก',
     วัตถุดิบ: l.material_name || '',
@@ -126,24 +95,22 @@ const getOutLogsFromTransactions = () => {
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
       const matId = String(m.id);
-      const matNameClean = m.name?.trim().toLowerCase();
+      const targetCleanName = cleanName(m.name);
       
-      // ดึง Log ทั้งรับเข้า และ เบิกออก ของวัตถุดิบชิ้นนี้
-      const allLogsForMat = [
-        ...stockLog.filter(l => !isCancelNoise(l)),
-        ...txOutLogs
-      ].filter(l => {
+      // ดึง Log ทั้งหมดของวัตถุดิบชิ้นนี้จาก stockLog
+      const logsForMat = stockLog.filter(l => {
+        if (isCancelNoise(l)) return false;
         const lIdMatches = l.material_id && String(l.material_id) === matId;
-        const lNameMatches = l.material_name && l.material_name.trim().toLowerCase() === matNameClean;
+        const lNameMatches = cleanName(l.material_name) === targetCleanName;
         return lIdMatches || lNameMatches;
       });
 
-      const within = allLogsForMat.filter(l => {
+      const within = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10);
         return d >= from && d <= to;
       });
 
-      const after = allLogsForMat.filter(l => {
+      const after = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10);
         return d > to;
       });
@@ -151,13 +118,10 @@ const getOutLogsFromTransactions = () => {
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ผลกระทบหลังช่วงวันที่เลือก
       const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
         - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ยอดปลายงวด = สต๊อกปัจจุบัน - ยอดที่เกิดหลังช่วงวันที่เลือก
       const closing = Number(m.qty || 0) - netAfter;
-      // ยอดต้นงวด = ปลายงวด - รับเข้า + เบิกออก (ในช่วงวันที่เลือก)
       const opening = closing - inWithin + outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
