@@ -2,13 +2,18 @@ import React, { useRef, useState } from 'react';
 import { Check, Package, Save, Trash2, Clock } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
-// รายชื่อรุ่นที่ไม่ต้องติ๊กรับของ (ยกเว้นเฉพาะ 5 รุ่นนี้)
+// รายชื่อรุ่นที่ไม่ต้องติ๊กรับของ
 const EXCLUDED_MODELS = [
   'Sleepplug',
   'Sleepplug Glow',
   'Sleepplug-Glow-ข้างเดียว',
   'Sleepplug-ข้างเดียว',
   'Sleepplug-ตัน'
+];
+
+// รายชื่อหมวดหมู่ที่ไม่ต้องติ๊กรับของ
+const EXCLUDED_CATEGORIES = [
+  'ซ่อมและอื่นๆ'
 ];
 
 function pickStatus(bomSnapshot) {
@@ -24,11 +29,14 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
 
-  // กรองเฉพาะออเดอร์ของผู้ใช้นี้ และไม่อยู่ในรุ่นที่ยกเว้น 5 รุ่นด้านบน
+  // กรองเฉพาะออเดอร์ของผู้ใช้นี้ และไม่อยู่ในรุ่น/หมวดหมู่ที่ยกเว้น
   const myOrders = transactions.filter(t => t.created_by === userId);
-  const myRecheckOrders = myOrders.filter(t => !EXCLUDED_MODELS.includes(t.model_name));
+  const myRecheckOrders = myOrders.filter(t => 
+    !EXCLUDED_MODELS.includes(t.model_name) &&
+    !EXCLUDED_CATEGORIES.includes(t.category)
+  );
 
-  // รวมรายการของที่รอเช็ครับ เฉพาะออเดอร์ที่ไม่โดนยกเว้น
+  // รวมรายการของที่รอเช็ครับ
   const totals = {};
   const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
   
