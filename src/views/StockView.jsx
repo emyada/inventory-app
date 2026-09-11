@@ -17,19 +17,23 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  // ฟังก์ชันช่วยแปลง Transaction (ผลิต/ซ่อม) เป็น Flat Log สำหรับคิดยอดเบิกออก
-  const getOutLogsFromTransactions = () => {
-    const outLogs = [];
-    transactions.forEach(tx => {
-      // สนใจเฉพาะ Transaction ที่อยู่ในสถานะปกติ (ไม่ยกเลิก)
-      if (tx.order_ref?.startsWith('ยกเลิก:')) return;
-      
-      const createdDate = tx.created_at?.slice(0, 10);
-      const bom = tx.bom_snapshot || [];
+ // คลุมดำทับฟังก์ชัน getOutLogsFromTransactions เดิมใน StockView.jsx ด้วยโค้ดนี้
+const getOutLogsFromTransactions = () => {
+  const outLogs = [];
+  transactions.forEach(tx => {
+    // 1. ข้าม Transaction ที่ถูกยกเลิก
+    if (tx.order_ref?.startsWith('ยกเลิก:')) return;
+    
+    const createdDate = tx.created_at?.slice(0, 10);
+    const bom = tx.bom_snapshot || [];
 
-      bom.forEach(b => {
-        // นับเฉพาะรายการที่ถูกหยิบ/เบิกออกไปแล้วจริง
-        if (b.picked) {
+    bom.forEach(b => {
+      // 2. นับเฉพาะรายการที่ถูกหยิบจริง (picked === true)
+      if (b.picked) {
+        // ใช้ b.qty หรือ b.total_qty โดยตรง (ห้ามเอาไปคูณ tx.qty ซ้ำ)
+        const actualQty = Number(b.qty ?? b.total_qty ?? 0);
+
+        if (actualQty > 0) {
           outLogs.push({
             id: `tx-${tx.id}-${b.material_id}`,
             created_at: tx.created_at,
@@ -37,17 +41,17 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
             type: 'out',
             material_id: b.material_id,
             material_name: b.material_name,
-            amount: Number(b.qty) || 0,
+            amount: actualQty,
             unit: b.unit || 'pcs',
             order_ref: `เบิกผลิต: ${tx.order_ref} (${tx.model_name || ''})`,
             staff_name: tx.staff_name || '',
           });
         }
-      });
+      }
     });
-    return outLogs;
-  };
-
+  });
+  return outLogs;
+};
   const txOutLogs = getOutLogsFromTransactions();
 
   // กรอง Log เติมสต็อก (ซื้อเข้า) ตามช่วงวันที่
