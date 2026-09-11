@@ -2,6 +2,19 @@ import React, { useRef, useState } from 'react';
 import { Check, Package, Users, Save } from 'lucide-react';
 import { C, mono } from '../theme';
 
+// รายชื่อรุ่นและหมวดหมู่ที่ไม่ต้องรอช่างกดติ๊กรับซ้ำ ( Auto-Receive และตัด Stock ทันที)
+const EXCLUDED_MODELS = [
+  'Sleepplug',
+  'Sleepplug Glow',
+  'Sleepplug-Glow-ข้างเดียว',
+  'Sleepplug-ข้างเดียว',
+  'Sleepplug-ตัน'
+];
+
+const EXCLUDED_CATEGORIES = [
+  'ซ่อมและอื่นๆ'
+];
+
 export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) {
   const [staged, setStaged] = useState([]); // เก็บ material_ids ที่ติ๊กเลือกไว้
   const [confirming, setConfirming] = useState(false);
@@ -29,7 +42,7 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     byStaff[key].byModel[t.model_name] = (byStaff[key].byModel[t.model_name] || 0) + 1;
   });
 
-  // ฟังก์ชันติ๊กเลือก / ถอนการเลือก (ยังไม่เบิกทันที)
+  // ฟังก์ชันติ๊กเลือก / ถอนการเลือก
   function toggleStage(materialId) {
     setStaged(s => s.includes(materialId) ? s.filter(id => id !== materialId) : [...s, materialId]);
   }
@@ -42,8 +55,14 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     processingRef.current = true;
     setConfirming(true);
     try {
-      // ส่ง Array รายการทั้งหมดที่ติ๊กเลือกไปเบิกทีเดียวพร้อมกัน
-      const { errors } = await onBulkPickBatch(staged);
+      // ส่ง Array รายการทั้งหมดที่ติ๊กเลือกไปเบิก
+      // เพิ่ม Flag หรือสแกนเพื่อเปลี่ยนเป็น Auto-Receive สำหรับกลุ่มยกเว้น
+      const { errors } = await onBulkPickBatch(staged, (transaction) => {
+        const isExcludedModel = EXCLUDED_MODELS.includes(transaction.model_name);
+        const isExcludedCategory = EXCLUDED_CATEGORIES.includes(transaction.category);
+        return isExcludedModel || isExcludedCategory;
+      });
+
       setStaged([]); // ล้างรายการที่เลือกออก
       if (errors && errors.length > 0) alert(errors.join('\n'));
     } finally {
@@ -65,7 +84,7 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
         <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีของค้างหยิบตอนนี้ 🎉</div>
       )}
 
-      {/* รายการวัตถุดิบ: ติ๊กเปลี่ยนสีเขียว/ขีดฆ่าก่อน ยังไม่ตัดสต็อกทันที */}
+      {/* รายการวัตถุดิบ */}
       <div className="grid-list" style={{ marginBottom: 22 }}>
         {totalRows.map(r => {
           const isStaged = staged.includes(r.id);
@@ -129,7 +148,7 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
         ))}
       </div>
 
-      {/* ✅ ปุ่มสีส้มด้านล่าง: จะลอยขึ้นมาเฉพาะเวลาเราติ๊กเลือกรายการอย่างน้อย 1 อัน */}
+      {/* ปุ่มยืนยันด้านล่าง */}
       {staged.length > 0 && (
         <div style={{ position: 'fixed', bottom: 62, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 99, padding: '0 14px', boxSizing: 'border-box' }}>
           <button onClick={handleConfirm} disabled={confirming}
