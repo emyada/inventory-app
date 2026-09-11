@@ -114,7 +114,7 @@ const combinedLogs = [...stockLog, ...txLogs];
     setSending(false);
   }
 
-// ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
+// ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation - Fixed) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
@@ -129,28 +129,32 @@ const combinedLogs = [...stockLog, ...txLogs];
         return lIdMatches || lNameMatches;
       });
 
-      // รายการที่เกิดขึ้น "ภายใน" ช่วงวันที่เลือก (from ถึง to)
+      // แยก Log ก่อนช่วงเวลา, ในช่วงเวลา, และหลังช่วงเวลา
+      const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
       const within = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10) || '';
         return d >= from && d <= to;
       });
 
-      // รายการที่เกิดขึ้น "หลังจาก" ช่วงวันที่เลือก (อนาคตถัดจาก to)
-      const after = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') > to);
-
-      // ยอดรับเข้า / เบิกออก ในช่วงเวลานี้
+      // ถ้ายอดต้นงวดกำหนดยกมาจาก DB (m.qty + ยอดเบิกทั้งหมด) หรือจากการคำนวณ Log ก่อนหน้า
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ยอดเปลี่ยนแปลงหลังจากวันที่ to (ถ้ามี)
-      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
-        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      // ยอดเบิกทั้งหมดของวัตถุดิบนี้
+      const totalOutForMat = logsForMat.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const totalInForMat = logsForMat.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ปลายงวด = ยอดในคลังปัจจุบัน (m.qty) หักยอดที่เกิดหลังจากวันที่ to
-      const closing = Number(m.qty || 0) - netAfter;
+      // ยอดต้นงวดตั้งต้นจริง = ยอดคลังปัจจุบันถ้ามี หรือคำนวณจาก Log ก่อนหน้า + ค่าตั้งต้น
+      const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+
+      // ใช้ m.qty หากมีค่า หรือคำนวณต้นงวดแบบย้อนกลับคงที่
+      const baseStock = Number(m.qty || 0) > 0 ? Number(m.qty) + totalOutForMat - totalInForMat : 0;
       
-      // ต้นงวด = ปลายงวด - รับเข้าช่วงนี้ + เบิกออกช่วงนี้
-      const opening = closing - inWithin + outWithin;
+      // ต้นงวด = ยอดตั้งต้น + ยอดรับก่อนหน้า - ยอดเบิกรวมก่อนหน้า
+      const opening = baseStock + inBefore - outBefore;
+      // ปลายงวด = ต้นงวด + รับเข้า - เบิกออก
+      const closing = opening + inWithin - outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
