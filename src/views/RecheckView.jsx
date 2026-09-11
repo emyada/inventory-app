@@ -36,7 +36,7 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
   
-  // เพิ่ม State สำหรับจำรายการที่เพิ่งกดรับสำเร็จ (ป้องกันหน้าจอค้าง)
+  // State สำหรับจำรายการที่ยืนยันแล้ว
   const [confirmedKeys, setConfirmedKeys] = useState(new Set());
 
   const todayStr = getTodayString();
@@ -57,17 +57,16 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   );
 
   const totals = {};
-  const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
+  const stagedKeys = new Set(staged.map(s => s.txId + '_' + s.materialId));
 
   myRecheckOrders.forEach(t => {
     t.bom_snapshot?.filter(b => b.picked && !b.received).forEach(b => {
-      const itemKey = t.id + b.material_id;
-      // ถ้าเคยยืนยันไปแล้วใน Session นี้ ให้ซ่อนออกทันที
+      const itemKey = t.id + '_' + b.material_id;
       if (confirmedKeys.has(itemKey)) return;
 
       const key = b.material_id;
       if (!totals[key]) totals[key] = { name: b.material_name, unit: b.unit, qty: 0, refs: [] };
-      totals[key].qty += b.qty;
+      totals[key].qty += (Number(b.qty) || 0);
       totals[key].refs.push({ txId: t.id, materialId: b.material_id, tx: t });
     });
   });
@@ -75,7 +74,7 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const totalRows = Object.entries(totals).map(([id, v]) => ({ id, ...v }));
 
   function isRowStaged(row) {
-    return row.refs.every(r => stagedKeys.has(r.txId + r.materialId));
+    return row.refs.length > 0 && row.refs.every(r => stagedKeys.has(r.txId + '_' + r.materialId));
   }
 
   function toggleRow(row) {
@@ -88,14 +87,13 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
 
   const processingRef = useRef(false);
   async function handleConfirm() {
-    if (processingRef.current) return;
+    if (processingRef.current || staged.length === 0) return;
     processingRef.current = true;
     setConfirming(true);
     try {
       const result = await onConfirmBatch(staged.map(s => ({ tx: s.tx, materialId: s.materialId })));
       
-      // บันทึก Keys ของรายการที่กดยืนยันแล้ว เพื่อเคลียร์ออกจาก UI ทันที
-      const justConfirmed = new Set(staged.map(s => s.txId + s.materialId));
+      const justConfirmed = new Set(staged.map(s => s.txId + '_' + s.materialId));
       setConfirmedKeys(prev => new Set([...prev, ...justConfirmed]));
       setStaged([]);
 
@@ -145,7 +143,7 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
                     <div style={{ fontSize: 12.5, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: staged_ ? 'line-through' : 'none', opacity: staged_ ? 0.6 : 1 }}>{row.name}</div>
                     <div style={{ fontSize: 10.5, color: C.textDim }}>จาก {row.refs.length} ออเดอร์</div>
                   </div>
-                  <div style={{ ...mono, fontWeight: 700, color: staged_ ? C.textDim : C.teal, flexShrink: 0 }}>{row.qty} {row.unit}</div>
+                  <div style={{ ...mono, fontWeight: 700, color: staged_ ? C.textDim : C.teal, flexShrink: 0 }}>{row.qty.toLocaleString()} {row.unit}</div>
                 </button>
               );
             })}
