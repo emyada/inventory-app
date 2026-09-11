@@ -32,28 +32,34 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
   const isCancelNoise = (l) => l.order_ref && String(l.order_ref).trim().startsWith('ยกเลิก:');
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
-  // --- แปลง transactions (ออเดอร์) ให้กลายเป็นรายการเบิกออก ---
-  const txLogs = [];
-  transactions.forEach(tx => {
-    if (tx.status === 'cancelled') return;
-    (tx.bom_snapshot || []).forEach(b => {
-      txLogs.push({
-        id: `tx_${tx.id}_${b.material_id || b.material_name}`,
-        created_at: tx.created_at,
-        type: 'out',
-        material_id: b.material_id,
-        material_name: b.material_name,
-        amount: Number(b.qty || 0),
-        unit: b.unit || 'pcs',
-        order_ref: tx.order_ref || tx.order_no || 'Order',
-        staff_name: tx.staff_name || tx.created_by || ''
-      });
+// --- แปลง transactions ให้เป็น Log เบิกออก (ป้องกันรายการเบิ้ล) ---
+const existingOrderRefs = new Set(stockLog.map(l => l.order_ref).filter(Boolean));
+
+const txLogs = [];
+transactions.forEach(tx => {
+  if (tx.status === 'cancelled') return;
+  
+  const ref = tx.order_ref || tx.order_no || 'Order';
+  // ❌ ถ้าออเดอร์นี้ถูกบันทึกลง stockLog ไปแล้ว ให้ข้าม ไม่ต้องเอามาวนซ้ำ
+  if (existingOrderRefs.has(ref)) return;
+
+  (tx.bom_snapshot || []).forEach(b => {
+    txLogs.push({
+      id: `tx_${tx.id}_${b.material_id || b.material_name}`,
+      created_at: tx.created_at,
+      type: 'out',
+      material_id: b.material_id,
+      material_name: b.material_name,
+      amount: Number(b.qty || 0),
+      unit: b.unit || 'pcs',
+      order_ref: ref,
+      staff_name: tx.staff_name || tx.created_by || ''
     });
   });
+});
 
-  // รวม Log ซื้อเข้า (จาก stockLog) + Log เบิกออก (จาก transactions)
-  const combinedLogs = [...stockLog, ...txLogs];
-
+// รวม Log โดยไม่เบิ้ลออเดอร์เดิม
+const combinedLogs = [...stockLog, ...txLogs];
   // กรอง Log ตามช่วงวันที่
   const filteredStockLog = combinedLogs.filter(l => {
     const d = l.created_at?.slice(0, 10);
