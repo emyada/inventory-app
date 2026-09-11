@@ -90,39 +90,40 @@ export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, 
     setSending(false);
   }
 
-  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
+  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation - Fixed) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
       const matId = String(m.id);
       const targetCleanName = cleanName(m.name);
       
-      // ดึง Log ทั้งหมดของวัตถุดิบชิ้นนี้จาก stockLog
+      // ดึง Log ทั้งหมดของวัตถุดิบชิ้นนี้
       const logsForMat = stockLog.filter(l => {
         if (isCancelNoise(l)) return false;
         const lIdMatches = l.material_id && String(l.material_id) === matId;
-        const lNameMatches = cleanName(l.material_name) === targetCleanName;
+        const logCleanName = cleanName(l.material_name);
+        const lNameMatches = logCleanName && (logCleanName === targetCleanName || logCleanName.includes(targetCleanName) || targetCleanName.includes(logCleanName));
         return lIdMatches || lNameMatches;
       });
 
+      // แยก Log ก่อนเริ่มช่วงเวลา และภายในช่วงเวลา
+      const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
       const within = logsForMat.filter(l => {
-        const d = l.created_at?.slice(0, 10);
+        const d = l.created_at?.slice(0, 10) || '';
         return d >= from && d <= to;
       });
 
-      const after = logsForMat.filter(l => {
-        const d = l.created_at?.slice(0, 10);
-        return d > to;
-      });
+      // ยอดคำนวณสะสมก่อนเริ่มงวด
+      const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
+      // ยอดรับเข้า-เบิกออกในงวด
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
-        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-
-      const closing = Number(m.qty || 0) - netAfter;
-      const opening = closing - inWithin + outWithin;
+      // คำนวณ ต้นงวด และ ปลายงวด
+      const opening = inBefore - outBefore;
+      const closing = opening + inWithin - outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
