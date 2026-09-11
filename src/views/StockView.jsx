@@ -35,17 +35,16 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     return ref.startsWith('ยกเลิก:') || cancelledOrderRefs.has(ref);
   };
 
-  // เช็กว่าเป็นรายการ "รับเข้า" หรือไม่ (ถ้าไม่ใช่ in ถือว่าเป็น out ทั้งหมด)
+  // เช็กว่าเป็นรายการ "รับเข้า" หรือไม่
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
-  const restockCount = filteredLog.filter(l => isTypeIn(l)).length;
-  const consumeCount = filteredLog.filter(l => !isTypeIn(l) && !isCancelNoise(l)).length;
+  // สถิติเฉพาะรับเข้า
+  const restockCount = filteredLog.filter(l => isTypeIn(l) && !isCancelNoise(l)).length;
 
   // ------------------ 1. ประวัติเข้า-ออก ------------------
   const byMaterial = {};
   filteredLog.forEach(l => {
     if (isCancelNoise(l)) return; // ไม่นำรายการยกเลิกมารวมยอด
-    // ใช้ชื่อวัตถุดิบเป็น Key หลักในการสลักกลุ่ม
     const key = (l.material_name || l.material_id || 'ไม่ระบุ').trim().toLowerCase();
     if (!byMaterial[key]) {
       byMaterial[key] = { id: key, name: l.material_name || 'ไม่ระบุ', unit: l.unit || '', in: 0, out: 0, entries: [] };
@@ -86,7 +85,6 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     .map(m => {
       const matNameClean = m.name?.trim().toLowerCase();
       
-      // กรอง Log ของวัตถุดิบชิ้นนี้ (จับคู่ทั้ง ID และ Name)
       const logsForMaterial = stockLog.filter(l => {
         if (isCancelNoise(l)) return false;
         const lIdMatches = l.material_id && l.material_id === m.id;
@@ -107,11 +105,13 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
+      // ยอดสุทธิหลังช่วงวันที่เลือก
       const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
         - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
+      // คำนวณปลายงวด และ ต้นงวด อย่างถูกต้อง
       const closing = Number(m.qty || 0) - netAfter;
-      const opening = closing - (inWithin - outWithin);
+      const opening = closing - inWithin + outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
@@ -190,14 +190,12 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
           <div style={{ fontSize: 10, color: C.textDim, marginBottom: 10, lineHeight: 1.5 }}>
             (การส่งออกไม่รวมรายการที่ยกเลิกไปแล้ว — ดูรายการยกเลิกได้จากประวัติด้านล่างในแอปเท่านั้น)
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <div style={{ flex: 1, background: 'rgba(63,167,150,0.1)', border: `1px solid ${C.teal}`, borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>รับเข้า (ซื้อเข้าจริง)</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.teal, ...mono }}>{restockCount} ครั้ง</div>
-            </div>
-            <div style={{ flex: 1, background: 'rgba(217,119,87,0.1)', border: `1px solid ${C.red}`, borderRadius: 10, padding: 10 }}>
-              <div style={{ fontSize: 10.5, color: C.textDim }}>เบิกออก (ผลิตจริง)</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.red, ...mono }}>{consumeCount} ครั้ง</div>
+
+          {/* ส่วนแสดง Card เฉพาะ "รับเข้า (ซื้อเข้าจริง)" เท่านั้น */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ background: 'rgba(63,167,150,0.1)', border: `1px solid ${C.teal}`, borderRadius: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11, color: C.textDim }}>รับเข้า (ซื้อเข้าจริง)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: C.teal, ...mono, marginTop: 2 }}>{restockCount} ครั้ง</div>
             </div>
           </div>
 
