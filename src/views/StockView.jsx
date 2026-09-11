@@ -5,7 +5,7 @@ import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
 import { sendToGoogleSheet } from '../utils/sheets';
 
-export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
+export function StockView({ materials = [], stockLog = [], transactions = [], role, onEdit, onAdd, onRestock, sheetsWebhookUrl }) {
   const [sub, setSub] = useState('current');
   const [search, setSearch] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
@@ -17,7 +17,7 @@ export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, 
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  // ฟังก์ชันคลีนชื่อวัตถุดิบเพื่อเทียบกัน (ลบ _pcs, Space, ตัวพิมพ์เล็ก/ใหญ่)
+  // Clean name helper
   const cleanName = (str) => {
     if (!str) return '';
     return String(str)
@@ -29,15 +29,33 @@ export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, 
       .trim();
   };
 
-  const isCancelNoise = (l) => {
-    if (!l.order_ref) return false;
-    return l.order_ref.trim().startsWith('ยกเลิก:');
-  };
-
+  const isCancelNoise = (l) => l.order_ref && l.order_ref.trim().startsWith('ยกเลิก:');
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
+  // --- แปลง transactions (ออเดอร์) ให้กลายเป็นรายการเบิกออก ---
+  const txLogs = [];
+  transactions.forEach(tx => {
+    if (tx.status === 'cancelled') return;
+    (tx.bom_snapshot || []).forEach(b => {
+      txLogs.push({
+        id: `tx_${tx.id}_${b.material_id || b.material_name}`,
+        created_at: tx.created_at,
+        type: 'out',
+        material_id: b.material_id,
+        material_name: b.material_name,
+        amount: Number(b.qty || 0),
+        unit: b.unit || 'pcs',
+        order_ref: tx.order_ref || tx.order_no || 'Order',
+        staff_name: tx.staff_name || tx.created_by || ''
+      });
+    });
+  });
+
+  // รวม Log ซื้อเข้า (จาก stockLog) + Log เบิกออก (จาก transactions)
+  const combinedLogs = [...stockLog, ...txLogs];
+
   // กรอง Log ตามช่วงวันที่
-  const filteredStockLog = stockLog.filter(l => {
+  const filteredStockLog = combinedLogs.filter(l => {
     const d = l.created_at?.slice(0, 10);
     return d >= from && d <= to && !isCancelNoise(l);
   });
@@ -90,15 +108,14 @@ export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, 
     setSending(false);
   }
 
-  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation - Fixed) ------------------
+  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
       const matId = String(m.id);
       const targetCleanName = cleanName(m.name);
       
-      // ดึง Log ทั้งหมดของวัตถุดิบชิ้นนี้
-      const logsForMat = stockLog.filter(l => {
+      const logsForMat = combinedLogs.filter(l => {
         if (isCancelNoise(l)) return false;
         const lIdMatches = l.material_id && String(l.material_id) === matId;
         const logCleanName = cleanName(l.material_name);
@@ -106,24 +123,25 @@ export function StockView({ materials = [], stockLog = [], role, onEdit, onAdd, 
         return lIdMatches || lNameMatches;
       });
 
-      // แยก Log ก่อนเริ่มช่วงเวลา และภายในช่วงเวลา
-      const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
       const within = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10) || '';
         return d >= from && d <= to;
       });
 
-      // ยอดคำนวณสะสมก่อนเริ่มงวด
-      const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-      const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const after = logsForMat.filter(l => {
+        const d = l.created_at?.slice(0, 10) || '';
+        return d > to;
+      });
 
-      // ยอดรับเข้า-เบิกออกในงวด
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // คำนวณ ต้นงวด และ ปลายงวด
-      const opening = inBefore - outBefore;
-      const closing = opening + inWithin - outWithin;
+      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
+        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+
+      // คำนวณจากยอดปัจจุบันย้อนกลับ
+      const closing = Number(m.qty || 0) - netAfter;
+      const opening = closing - inWithin + outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
