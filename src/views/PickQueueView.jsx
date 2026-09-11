@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { Check, Package, Users, Save } from 'lucide-react';
 import { C, mono } from '../theme';
 
-// รายชื่อรุ่นและหมวดหมู่ที่ไม่ต้องรอช่างกดติ๊กรับซ้ำ ( Auto-Receive และตัด Stock ทันที)
 const EXCLUDED_MODELS = [
   'Sleepplug',
   'Sleepplug Glow',
@@ -16,22 +15,43 @@ const EXCLUDED_CATEGORIES = [
 ];
 
 export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) {
-  const [staged, setStaged] = useState([]); // เก็บ material_ids ที่ติ๊กเลือกไว้
+  const [staged, setStaged] = useState([]); // [{ txId, materialId, tx }]
   const [confirming, setConfirming] = useState(false);
 
   // ดึงรายการออเดอร์ที่ยังมีวัตถุดิบรอเบิก
   const openOrders = transactions.filter(t => t.bom_snapshot?.some(b => !b.picked));
 
-  // คำนวณยอดรวมวัตถุดิบทั้งหมดที่ต้องหยิบ
+  // คำนวณยอดรวมวัตถุดิบ โดยเก็บ Reference ของออเดอร์ไว้ทั้งหมด
   const totals = {};
+  const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
+
   openOrders.forEach(t => {
     t.bom_snapshot?.filter(b => !b.picked).forEach(b => {
-      if (!totals[b.material_id]) totals[b.material_id] = { name: b.material_name, unit: b.unit, qty: 0, orders: 0 };
-      totals[b.material_id].qty += b.qty;
-      totals[b.material_id].orders += 1;
+      // จับกลุ่มตาม ชื่อวัตถุดิบ + หน่วย เพื่อป้องกันปัญหา ID ไม่ตรงกัน
+      const key = `${b.material_name}_${b.unit}`;
+      if (!totals[key]) {
+        totals[key] = { id: key, name: b.material_name, unit: b.unit, qty: 0, refs: [] };
+      }
+      totals[key].qty += b.qty;
+      totals[key].refs.push({ txId: t.id, materialId: b.material_id, tx: t });
     });
   });
-  const totalRows = Object.entries(totals).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.qty - a.qty);
+
+  const totalRows = Object.values(totals).sort((a, b) => b.qty - a.qty);
+
+  // เช็กว่าวัตถุดิบกลุ่มนี้ถูกติ๊กเลือกครบทุกออเดอร์หรือยัง
+  function isRowStaged(row) {
+    return row.refs.every(r => stagedKeys.has(r.txId + r.materialId));
+  }
+
+  // ฟังก์ชันติ๊กเลือก / ถอนการเลือก (อัปเดตครอบคลุมทุกออเดอร์ที่ใช้วัตถุดิบนี้)
+  function toggleRow(row) {
+    const allStaged = isRowStaged(row);
+    setStaged(s => {
+      const withoutRow = s.filter(x => !row.refs.some(r => r.txId === x.txId && r.materialId === x.materialId));
+      return allStaged ? withoutRow : [...withoutRow, ...row.refs.map(r => ({ txId: r.txId, materialId: r.materialId, tx: r.tx }))];
+    });
+  }
 
   // สรุปตามรายชื่อพนักงาน
   const byStaff = {};
@@ -42,11 +62,6 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     byStaff[key].byModel[t.model_name] = (byStaff[key].byModel[t.model_name] || 0) + 1;
   });
 
-  // ฟังก์ชันติ๊กเลือก / ถอนการเลือก
-  function toggleStage(materialId) {
-    setStaged(s => s.includes(materialId) ? s.filter(id => id !== materialId) : [...s, materialId]);
-  }
-
   const processingRef = useRef(false);
 
   // ฟังก์ชันกดปุ่มสีส้ม "ยืนยันหยิบแล้ว"
@@ -55,9 +70,10 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
     processingRef.current = true;
     setConfirming(true);
     try {
-      // ส่ง Array รายการทั้งหมดที่ติ๊กเลือกไปเบิก
-      // เพิ่ม Flag หรือสแกนเพื่อเปลี่ยนเป็น Auto-Receive สำหรับกลุ่มยกเว้น
-      const { errors } = await onBulkPickBatch(staged, (transaction) => {
+      // ดึงเฉพาะ material_id ส่งกลับไปตัดสต๊อก
+      const materialIdsToPick = Array.from(new Set(staged.map(s => s.materialId)));
+      
+      const { errors } = await onBulkPickBatch(materialIdsToPick, (transaction) => {
         const isExcludedModel = EXCLUDED_MODELS.includes(transaction.model_name);
         const isExcludedCategory = EXCLUDED_CATEGORIES.includes(transaction.category);
         return isExcludedModel || isExcludedCategory;
@@ -87,24 +103,24 @@ export function PickQueueView({ transactions, materialsById, onBulkPickBatch }) 
       {/* รายการวัตถุดิบ */}
       <div className="grid-list" style={{ marginBottom: 22 }}>
         {totalRows.map(r => {
-          const isStaged = staged.includes(r.id);
+          const staged_ = isRowStaged(r);
           return (
-            <button key={r.id} onClick={() => toggleStage(r.id)}
+            <button key={r.id} onClick={() => toggleRow(r)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%', boxSizing: 'border-box',
-                background: isStaged ? 'rgba(63,167,150,0.1)' : C.panel, 
-                border: `1px solid ${isStaged ? C.teal : C.line}`, 
+                background: staged_ ? 'rgba(63,167,150,0.1)' : C.panel, 
+                border: `1px solid ${staged_ ? C.teal : C.line}`, 
                 borderRadius: 10, padding: '10px 12px', cursor: 'pointer', color: C.text,
                 transition: 'all 0.15s ease'
               }}>
-              <div style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${isStaged ? C.teal : C.line}`, background: isStaged ? C.teal : 'transparent' }}>
-                {isStaged && <Check size={13} color={C.bg} />}
+              <div style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${staged_ ? C.teal : C.line}`, background: staged_ ? C.teal : 'transparent' }}>
+                {staged_ && <Check size={13} color={C.bg} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text, textDecoration: isStaged ? 'line-through' : 'none', opacity: isStaged ? 0.6 : 1 }}>{r.name}</div>
-                <div style={{ fontSize: 10.5, color: C.textDim }}>จาก {r.orders} ออเดอร์</div>
+                <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text, textDecoration: staged_ ? 'line-through' : 'none', opacity: staged_ ? 0.6 : 1 }}>{r.name}</div>
+                <div style={{ fontSize: 10.5, color: C.textDim }}>จาก {r.refs.length} ออเดอร์</div>
               </div>
-              <div style={{ ...mono, fontWeight: 700, color: isStaged ? C.textDim : C.teal, flexShrink: 0 }}>{r.qty} {r.unit}</div>
+              <div style={{ ...mono, fontWeight: 700, color: staged_ ? C.textDim : C.teal, flexShrink: 0 }}>{r.qty} {r.unit}</div>
             </button>
           );
         })}
