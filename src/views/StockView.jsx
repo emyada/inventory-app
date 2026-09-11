@@ -114,7 +114,7 @@ const combinedLogs = [...stockLog, ...txLogs];
     setSending(false);
   }
 
-  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation - Fixed) ------------------
+// ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
@@ -129,22 +129,28 @@ const combinedLogs = [...stockLog, ...txLogs];
         return lIdMatches || lNameMatches;
       });
 
-      const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
+      // รายการที่เกิดขึ้น "ภายใน" ช่วงวันที่เลือก (from ถึง to)
       const within = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10) || '';
         return d >= from && d <= to;
       });
 
-      const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-      const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      // รายการที่เกิดขึ้น "หลังจาก" ช่วงวันที่เลือก (อนาคตถัดจาก to)
+      const after = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') > to);
 
+      // ยอดรับเข้า / เบิกออก ในช่วงเวลานี้
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ต้นงวด = ยอดรับเข้าก่อนหน้า - ยอดเบิกออกก่อนหน้า
-      const opening = inBefore - outBefore;
-      // ปลายงวด = ต้นงวด + รับเข้าช่วงนี้ - เบิกออกช่วงนี้
-      const closing = opening + inWithin - outWithin;
+      // ยอดเปลี่ยนแปลงหลังจากวันที่ to (ถ้ามี)
+      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
+        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+
+      // ปลายงวด = ยอดในคลังปัจจุบัน (m.qty) หักยอดที่เกิดหลังจากวันที่ to
+      const closing = Number(m.qty || 0) - netAfter;
+      
+      // ต้นงวด = ปลายงวด - รับเข้าช่วงนี้ + เบิกออกช่วงนี้
+      const opening = closing - inWithin + outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
