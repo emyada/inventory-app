@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Check, Package, Save, Trash2, Clock } from 'lucide-react';
+import { Check, Package, Save, Trash2 } from 'lucide-react';
 import { C, mono, tabBtn, tabBtnActive } from '../theme';
 
-// รายชื่อรุ่นที่ไม่ต้องติ๊กรับของ
+// รายชื่อรุ่นที่ไม่ต้องให้ช่างกดติ๊กรับซ้ำ ( auto-received เมื่อหัวหน้าจ่ายของ)
 const EXCLUDED_MODELS = [
   'Sleepplug',
   'Sleepplug Glow',
@@ -11,7 +11,7 @@ const EXCLUDED_MODELS = [
   'Sleepplug-ตัน'
 ];
 
-// รายชื่อหมวดหมู่ที่ไม่ต้องติ๊กรับของ
+// รายชื่อหมวดหมู่ที่ไม่ต้องให้ช่างกดติ๊กรับซ้ำ
 const EXCLUDED_CATEGORIES = [
   'ซ่อมและอื่นๆ'
 ];
@@ -29,14 +29,16 @@ export function RecheckView({ transactions, userId, onConfirmBatch, onCancel }) 
   const [staged, setStaged] = useState([]); // [{txId, materialId}]
   const [confirming, setConfirming] = useState(false);
 
-  // กรองเฉพาะออเดอร์ของผู้ใช้นี้ และไม่อยู่ในรุ่น/หมวดหมู่ที่ยกเว้น
+  // ดึงเฉพาะออเดอร์ของช่างคนนี้
   const myOrders = transactions.filter(t => t.created_by === userId);
+
+  // กรองของที่หัวหน้าจ่ายมาแล้ว (picked) แต่ช่างยังไม่ได้กดรับ (received)
+  // และซ่อนออเดอร์ที่เป็นรุ่นยกเว้น/หมวดซ่อม ออกจากหน้าติ๊กของช่าง
   const myRecheckOrders = myOrders.filter(t => 
     !EXCLUDED_MODELS.includes(t.model_name) &&
     !EXCLUDED_CATEGORIES.includes(t.category)
   );
 
-  // รวมรายการของที่รอเช็ครับ
   const totals = {};
   const stagedKeys = new Set(staged.map(s => s.txId + s.materialId));
   
