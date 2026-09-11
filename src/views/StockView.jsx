@@ -29,7 +29,7 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
       .trim();
   };
 
-  const isCancelNoise = (l) => l.order_ref && l.order_ref.trim().startsWith('ยกเลิก:');
+  const isCancelNoise = (l) => l.order_ref && String(l.order_ref).trim().startsWith('ยกเลิก:');
   const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
   // --- แปลง transactions (ออเดอร์) ให้กลายเป็นรายการเบิกออก ---
@@ -108,7 +108,7 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
     setSending(false);
   }
 
-  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation) ------------------
+  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Calculation - Fixed) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
@@ -119,29 +119,26 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
         if (isCancelNoise(l)) return false;
         const lIdMatches = l.material_id && String(l.material_id) === matId;
         const logCleanName = cleanName(l.material_name);
-        const lNameMatches = logCleanName && (logCleanName === targetCleanName || logCleanName.includes(targetCleanName) || targetCleanName.includes(logCleanName));
+        const lNameMatches = logCleanName && logCleanName === targetCleanName;
         return lIdMatches || lNameMatches;
       });
 
+      const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
       const within = logsForMat.filter(l => {
         const d = l.created_at?.slice(0, 10) || '';
         return d >= from && d <= to;
       });
 
-      const after = logsForMat.filter(l => {
-        const d = l.created_at?.slice(0, 10) || '';
-        return d > to;
-      });
+      const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
-        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-
-      // คำนวณจากยอดปัจจุบันย้อนกลับ
-      const closing = Number(m.qty || 0) - netAfter;
-      const opening = closing - inWithin + outWithin;
+      // ต้นงวด = ยอดรับเข้าก่อนหน้า - ยอดเบิกออกก่อนหน้า
+      const opening = inBefore - outBefore;
+      // ปลายงวด = ต้นงวด + รับเข้าช่วงนี้ - เบิกออกช่วงนี้
+      const closing = opening + inWithin - outWithin;
 
       return { id: m.id, name: m.name, unit: m.unit, opening, inWithin, outWithin, closing };
     })
