@@ -233,7 +233,7 @@ function Workspace({ profile, role, signOut, userId }) {
             <RecheckView transactions={inv.transactions} userId={userId} onConfirmBatch={handleConfirmReceivedBatch} onCancel={setCancelTx} />
           )}
           {view === 'stock' && (
-            <StockView materials={inv.materials} stockLog={inv.stockLog} role={role}
+            <StockView materials={inv.materials} stockLog={inv.stockLog} transactions={inv.transactions} role={role}
               onEdit={setEditingMaterial} onAdd={() => setShowAddMaterial(true)} onRestock={setRestockMaterial} sheetsWebhookUrl={webhookUrl} />
           )}
           {view === 'report' && role === 'admin' && (
