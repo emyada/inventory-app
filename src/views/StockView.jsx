@@ -17,31 +17,60 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  const filteredLog = stockLog.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
+  // กรอง Log ตามช่วงวันที่
+  const filteredLog = stockLog.filter(l => {
+    const d = l.created_at?.slice(0, 10);
+    return d >= from && d <= to;
+  });
 
+  // ตรวจจับรายการยกเลิกออเดอร์
   const cancelledOrderRefs = new Set(
     stockLog.filter(l => l.order_ref?.startsWith('ยกเลิก:'))
-      .map(l => l.order_ref.replace(/^ยกเลิก:\s*/, ''))
+      .map(l => l.order_ref.replace(/^ยกเลิก:\s*/, '').trim())
   );
-  const isCancelNoise = (l) => l.order_ref?.startsWith('ยกเลิก:') || cancelledOrderRefs.has(l.order_ref);
+  
+  const isCancelNoise = (l) => {
+    if (!l.order_ref) return false;
+    const ref = l.order_ref.trim();
+    return ref.startsWith('ยกเลิก:') || cancelledOrderRefs.has(ref);
+  };
 
-  const restockCount = filteredLog.filter(l => l.type === 'in' && l.order_ref === 'ซื้อเข้า').length;
-  const consumeCount = filteredLog.filter(l => l.type === 'out' && !isCancelNoise(l)).length;
+  // เช็กว่าเป็นรายการ "รับเข้า" หรือไม่ (ถ้าไม่ใช่ in ถือว่าเป็น out ทั้งหมด)
+  const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
 
+  const restockCount = filteredLog.filter(l => isTypeIn(l)).length;
+  const consumeCount = filteredLog.filter(l => !isTypeIn(l) && !isCancelNoise(l)).length;
+
+  // ------------------ 1. ประวัติเข้า-ออก ------------------
   const byMaterial = {};
   filteredLog.forEach(l => {
-    const key = l.material_id || l.material_name;
-    if (!byMaterial[key]) byMaterial[key] = { name: l.material_name, unit: l.unit, in: 0, out: 0, entries: [] };
-    if (l.type === 'in') byMaterial[key].in += Number(l.amount); else byMaterial[key].out += Number(l.amount);
+    if (isCancelNoise(l)) return; // ไม่นำรายการยกเลิกมารวมยอด
+    // ใช้ชื่อวัตถุดิบเป็น Key หลักในการสลักกลุ่ม
+    const key = (l.material_name || l.material_id || 'ไม่ระบุ').trim().toLowerCase();
+    if (!byMaterial[key]) {
+      byMaterial[key] = { id: key, name: l.material_name || 'ไม่ระบุ', unit: l.unit || '', in: 0, out: 0, entries: [] };
+    }
+    const amt = Number(l.amount) || 0;
+    if (isTypeIn(l)) {
+      byMaterial[key].in += amt;
+    } else {
+      byMaterial[key].out += amt;
+    }
     byMaterial[key].entries.push(l);
   });
-  const materialRows = Object.entries(byMaterial)
-    .map(([id, v]) => ({ id, ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
+
+  const materialRows = Object.values(byMaterial)
+    .map(v => ({ ...v, entries: v.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 
   const rowsForExport = () => filteredLog.filter(l => !isCancelNoise(l)).map(l => ({
-    วันที่: l.created_at.slice(0, 10), ประเภท: l.type === 'in' ? 'รับเข้า' : 'เบิกออก',
-    วัตถุดิบ: l.material_name, จำนวน: l.amount, หน่วย: l.unit, อ้างอิง: l.order_ref, ผู้ทำรายการ: l.staff_name,
+    วันที่: l.created_at?.slice(0, 10) || '',
+    ประเภท: isTypeIn(l) ? 'รับเข้า' : 'เบิกออก',
+    วัตถุดิบ: l.material_name || '',
+    จำนวน: l.amount || 0,
+    หน่วย: l.unit || '',
+    อ้างอิง: l.order_ref || '',
+    ผู้ทำรายการ: l.staff_name || '',
   }));
 
   async function handleSendToSheet() {
@@ -51,24 +80,35 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
     setSending(false);
   }
 
-  // ---- แก้ไขตรรกะการคำนวณ ต้นงวด-ปลายงวด ให้ Match จาก ID + ชื่อวัตถุดิบ ----
+  // ------------------ 2. ต้นงวด-ปลายงวด (Balance Cards) ------------------
   const balanceRows = materials
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
-      // จับคู่ Log ทั้งจาก material_id และ material_name เพื่อป้องกัน Log หลุด
-      const logsForMaterial = stockLog.filter(l => 
-        !isCancelNoise(l) && 
-        (l.material_id === m.id || l.material_name?.trim().toLowerCase() === m.name?.trim().toLowerCase())
-      );
-
-      const within = logsForMaterial.filter(l => l.created_at?.slice(0, 10) >= from && l.created_at?.slice(0, 10) <= to);
-      const after = logsForMaterial.filter(l => l.created_at?.slice(0, 10) > to);
-
-      const inWithin = within.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0);
-      const outWithin = within.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
+      const matNameClean = m.name?.trim().toLowerCase();
       
-      const netAfter = after.filter(l => l.type === 'in').reduce((s, l) => s + Number(l.amount), 0)
-        - after.filter(l => l.type === 'out').reduce((s, l) => s + Number(l.amount), 0);
+      // กรอง Log ของวัตถุดิบชิ้นนี้ (จับคู่ทั้ง ID และ Name)
+      const logsForMaterial = stockLog.filter(l => {
+        if (isCancelNoise(l)) return false;
+        const lIdMatches = l.material_id && l.material_id === m.id;
+        const lNameMatches = l.material_name && l.material_name.trim().toLowerCase() === matNameClean;
+        return lIdMatches || lNameMatches;
+      });
+
+      const within = logsForMaterial.filter(l => {
+        const d = l.created_at?.slice(0, 10);
+        return d >= from && d <= to;
+      });
+
+      const after = logsForMaterial.filter(l => {
+        const d = l.created_at?.slice(0, 10);
+        return d > to;
+      });
+
+      const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+
+      const netAfter = after.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0)
+        - after.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
       const closing = Number(m.qty || 0) - netAfter;
       const opening = closing - (inWithin - outWithin);
@@ -160,11 +200,8 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
               <div style={{ fontSize: 18, fontWeight: 800, color: C.red, ...mono }}>{consumeCount} ครั้ง</div>
             </div>
           </div>
-          <div style={{ fontSize: 10, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-            (นับเป็น "จำนวนครั้ง" ไม่ใช่ผลรวมจำนวนสินค้า เพราะวัตถุดิบแต่ละตัวหน่วยไม่เหมือนกัน บวกรวมกันเป็นตัวเลขเดียวไม่มีความหมาย — ดูยอดจริงแยกตามวัตถุดิบแต่ละตัวได้ด้านล่าง)
-          </div>
 
-          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>แตะแต่ละรายการเพื่อดูรายละเอียดย่อย (รวมรายการที่ยกเลิกด้วย เพื่อเป็นประวัติเต็ม)</div>
+          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>แตะแต่ละรายการเพื่อดูรายละเอียดย่อย</div>
 
           {materialRows.length === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: 'center', padding: '20px 0' }}>ไม่มีรายการในช่วงนี้</div>}
 
@@ -188,18 +225,21 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
                   </button>
                   {isOpen && (
                     <div style={{ borderTop: `1px solid ${C.line}`, padding: '4px 12px 8px' }}>
-                      {r.entries.map(l => (
-                        <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>
-                          {l.type === 'in' ? <ArrowDownCircle size={13} color={C.teal} /> : <ArrowUpCircle size={13} color={C.red} />}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, color: C.textDim, ...mono }}>{l.created_at.slice(0, 10)}</div>
-                            <div style={{ fontSize: 11, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.order_ref}{l.staff_name ? ` · ${l.staff_name}` : ''}</div>
+                      {r.entries.map((l, idx) => {
+                        const in_ = isTypeIn(l);
+                        return (
+                          <div key={l.id || idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>
+                            {in_ ? <ArrowDownCircle size={13} color={C.teal} /> : <ArrowUpCircle size={13} color={C.red} />}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, color: C.textDim, ...mono }}>{l.created_at?.slice(0, 10)}</div>
+                              <div style={{ fontSize: 11, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.order_ref}{l.staff_name ? ` · ${l.staff_name}` : ''}</div>
+                            </div>
+                            <div style={{ ...mono, fontSize: 12, fontWeight: 700, color: in_ ? C.teal : C.red, flexShrink: 0 }}>
+                              {in_ ? '+' : '-'}{l.amount} {l.unit}
+                            </div>
                           </div>
-                          <div style={{ ...mono, fontSize: 12, fontWeight: 700, color: l.type === 'in' ? C.teal : C.red, flexShrink: 0 }}>
-                            {l.type === 'in' ? '+' : '-'}{l.amount} {l.unit}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -213,7 +253,7 @@ export function StockView({ materials, stockLog, role, onEdit, onAdd, onRestock,
         <div>
           <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
           <div style={{ fontSize: 10, color: C.textDim, margin: '8px 0 12px', lineHeight: 1.5 }}>
-            ต้นงวด = ยอดคงเหลือก่อนเริ่มช่วงที่เลือก · ปลายงวด = ยอดคงเหลือ ณ สิ้นช่วงที่เลือก (คำนวณจากยอดปัจจุบันย้อนกลับ แม่นยำตั้งแต่วันที่เริ่มบันทึกประวัติเป็นต้นมา ไม่รวมรายการที่ยกเลิก)
+            ต้นงวด = ยอดคงเหลือก่อนเริ่มช่วงที่เลือก · ปลายงวด = ยอดคงเหลือ ณ สิ้นช่วงที่เลือก
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <button onClick={() => downloadCSV(`stock-balance_${from}_to_${to}.csv`, toCSV(balanceRowsForExport(), ['วัตถุดิบ', 'หน่วย', 'ต้นงวด', 'รับเข้า', 'เบิกออก', 'ปลายงวด']))} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>
