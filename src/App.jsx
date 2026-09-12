@@ -53,7 +53,28 @@ function Workspace({ profile, role, signOut, userId }) {
   const PULL_THRESHOLD = 60;
   const PULL_MAX = 90;
 
-  const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 2500); };
+  const showToast = (msg, tone = 'ok') => { setToast({ msg, tone }); setTimeout(() => setToast(null), 3500); };
+
+  // --------------------------------------------------------------------------
+  // 🟢 เพิ่ม: ฟังก์ชันเช็กชื่อออเดอร์/รหัสลูกค้าซ้ำสดๆ จาก Supabase
+  // --------------------------------------------------------------------------
+  async function checkDuplicateOrder(orderRef) {
+    if (!orderRef) return null;
+    const cleanRef = orderRef.trim();
+    
+    // ค้นหาในฐานข้อมูลว่ามี order_ref นี้หรือยัง
+    const { data } = await supabase
+      .from('transactions')
+      .select('order_ref, created_at')
+      .eq('order_ref', cleanRef)
+      .maybeSingle();
+
+    if (data) {
+      const dateStr = data.created_at ? new Date(data.created_at).toLocaleDateString('th-TH') : '';
+      return `รหัส/ชื่อลูกค้า "${cleanRef}" ซ้ำ! (เคยเบิกไปแล้วเมื่อ ${dateStr})`;
+    }
+    return null;
+  }
 
   async function handleManualRefresh() {
     if (refreshing) return;
@@ -99,14 +120,31 @@ function Workspace({ profile, role, signOut, userId }) {
   useEffect(() => { if (role !== 'staff' && view === 'recheck') setView('floor'); }, [role, view]);
   useEffect(() => { if (role !== 'admin' && view === 'pick') setView('floor'); }, [role, view]);
 
+  // --------------------------------------------------------------------------
+  // 🟢 ปรับปรุง: เพิ่มระบบดักซ้ำตรง handleProduce, handleProduceBatch และ handleRepairRequest
+  // --------------------------------------------------------------------------
   async function handleProduce(model, orderRef, staffName) {
+    const dupError = await checkDuplicateOrder(orderRef);
+    if (dupError) {
+      showToast(dupError, 'warn');
+      return;
+    }
+
     const { error } = await inv.produceUnit(model, orderRef, staffName, userId);
     if (error) showToast(error, 'warn');
     else { showToast(`บันทึกผลิต ${model.name} — ออเดอร์ ${orderRef} แล้ว`, 'ok'); setProduceModel(null); }
   }
+
   async function handleProduceBatch(model, codes, staffName, onProgress) {
     const failed = [];
     for (let i = 0; i < codes.length; i++) {
+      const dupError = await checkDuplicateOrder(codes[i]);
+      if (dupError) {
+        failed.push(`${codes[i]} (ชื่อซ้ำ)`);
+        onProgress?.(i + 1);
+        continue;
+      }
+
       const { error } = await inv.produceUnit(model, codes[i], staffName, userId);
       if (error) failed.push(codes[i]);
       onProgress?.(i + 1);
@@ -118,12 +156,20 @@ function Workspace({ profile, role, signOut, userId }) {
     }
     setProduceModel(null);
   }
+
   async function handleRepairRequest({ orderRef, subType, note, staffName, bom }) {
+    const dupError = await checkDuplicateOrder(orderRef);
+    if (dupError) {
+      showToast(dupError, 'warn');
+      return;
+    }
+
     const pseudoModel = { id: null, name: subType, category: REPAIR_LABEL, bom };
     const { error } = await inv.produceUnit(pseudoModel, orderRef, staffName, userId, note);
     if (error) showToast(error, 'warn');
     else { showToast(`ส่งคำขอเบิก (ซ่อม) — ${orderRef} แล้ว`, 'ok'); setShowRepairForm(false); }
   }
+
   async function handleCancel(tx) {
     const { error } = await inv.cancelTransaction(tx, userId);
     if (error) showToast(error, 'warn');
