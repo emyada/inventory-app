@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, PackagePlus, ChevronRight, ChevronDown, History, ArrowDownCircle, ArrowUpCircle, Download, Send, Search, BookOpen } from 'lucide-react';
-import { C, mono, btnGhost, tabBtn, tabBtnActive, monthStartStr, todayStr } from '../theme';
+import { C, mono, btnGhost, tabBtn, tabBtnActive, todayStr } from '../theme';
 import { DateRangePicker } from '../components/DateRangePicker';
 import { toCSV, downloadCSV } from '../utils/csv';
 import { sendToGoogleSheet } from '../utils/sheets';
@@ -9,7 +9,7 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
   const [sub, setSub] = useState('current');
   const [search, setSearch] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
-  const [from, setFrom] = useState(monthStartStr());
+  const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
@@ -17,62 +17,40 @@ export function StockView({ materials = [], stockLog = [], transactions = [], ro
   const [balSendMsg, setBalSendMsg] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  // Clean name helper
-  const cleanName = (str) => {
-    if (!str) return '';
-    return String(str)
-      .toLowerCase()
-      .replace(/_pcs$/i, '')
-      .replace(/_g$/i, '')
-      .replace(/_ml$/i, '')
-      .replace(/\s+/g, '')
-      .trim();
-  };
+  const isTypeIn = (l) => l.type === 'in';
 
-  const isCancelNoise = (l) => l.order_ref && String(l.order_ref).trim().startsWith('ยกเลิก:');
-  const isTypeIn = (l) => l.type === 'in' || l.order_ref === 'ซื้อเข้า';
-
-// --- แปลง transactions ให้เป็น Log เบิกออก (ป้องกันรายการเบิ้ล) ---
-const existingOrderRefs = new Set(stockLog.map(l => l.order_ref).filter(Boolean));
-
-const txLogs = [];
-transactions.forEach(tx => {
-  if (tx.status === 'cancelled') return;
-  
-  const ref = tx.order_ref || tx.order_no || 'Order';
-  // ❌ ถ้าออเดอร์นี้ถูกบันทึกลง stockLog ไปแล้ว ให้ข้าม ไม่ต้องเอามาวนซ้ำ
-  if (existingOrderRefs.has(ref)) return;
-
-  (tx.bom_snapshot || []).forEach(b => {
-    txLogs.push({
-      id: `tx_${tx.id}_${b.material_id || b.material_name}`,
+  // ใช้ BOM ทุกบรรทัดและวันที่สร้างรายการเช่นเดียวกับหน้ารายงาน
+  const txLogs = transactions.flatMap(tx =>
+    (tx.bom_snapshot || []).map((b, index) => ({
+      id: `tx_${tx.id}_${index}`,
       created_at: tx.created_at,
       type: 'out',
       material_id: b.material_id,
       material_name: b.material_name,
       amount: Number(b.qty || 0),
-      unit: b.unit || 'pcs',
-      order_ref: ref,
-      staff_name: tx.staff_name || tx.created_by || ''
-    });
-  });
-});
+      unit: b.unit,
+      order_ref: tx.order_ref,
+      staff_name: tx.staff_name,
+    }))
+  );
 
-// รวม Log โดยไม่เบิ้ลออเดอร์เดิม
-const combinedLogs = [...stockLog, ...txLogs];
+  // รับเฉพาะซื้อเข้า ไม่รวม log เบิกหรือคืนที่ซ้ำกับยอดตามรายงาน
+  const purchaseLogs = stockLog.filter(
+    l => l.type === 'in' && l.order_ref === 'ซื้อเข้า'
+  );
+  const combinedLogs = [...purchaseLogs, ...txLogs];
   // กรอง Log ตามช่วงวันที่
   const filteredStockLog = combinedLogs.filter(l => {
     const d = l.created_at?.slice(0, 10);
-    return d >= from && d <= to && !isCancelNoise(l);
+    return d >= from && d <= to;
   });
 
   const restockCount = filteredStockLog.filter(l => isTypeIn(l)).length;
 
-  // ------------------ 1. จัดกลุ่มประวัติเข้า-ออก ------------------
+  // ------------------ 1. จัดกลุ่มรับเข้า–เบิกตามรายงาน ------------------
   const byMaterial = {};
   filteredStockLog.forEach(l => {
-    const key = cleanName(l.material_name || l.material_id);
-    if (!key) return;
+    const key = String(l.material_id);
 
     if (!byMaterial[key]) {
       byMaterial[key] = { 
@@ -119,15 +97,9 @@ const combinedLogs = [...stockLog, ...txLogs];
     .filter(m => m.name.toLowerCase().includes(balanceSearch.trim().toLowerCase()))
     .map(m => {
       const matId = String(m.id);
-      const targetCleanName = cleanName(m.name);
-      
-      const logsForMat = combinedLogs.filter(l => {
-        if (isCancelNoise(l)) return false;
-        const lIdMatches = l.material_id && String(l.material_id) === matId;
-        const logCleanName = cleanName(l.material_name);
-        const lNameMatches = logCleanName && logCleanName === targetCleanName;
-        return lIdMatches || lNameMatches;
-      });
+      const logsForMat = combinedLogs.filter(
+        l => String(l.material_id) === matId
+      );
 
       // แยก Log ก่อนช่วงเวลา, ในช่วงเวลา, และหลังช่วงเวลา
       const before = logsForMat.filter(l => (l.created_at?.slice(0, 10) || '') < from);
@@ -136,7 +108,7 @@ const combinedLogs = [...stockLog, ...txLogs];
         return d >= from && d <= to;
       });
 
-      // ถ้ายอดต้นงวดกำหนดยกมาจาก DB (m.qty + ยอดเบิกทั้งหมด) หรือจากการคำนวณ Log ก่อนหน้า
+      // รวมยอดรับเข้าและเบิกตามรายงานในช่วงที่เลือก
       const inWithin = within.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outWithin = within.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
@@ -144,12 +116,13 @@ const combinedLogs = [...stockLog, ...txLogs];
       const totalOutForMat = logsForMat.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const totalInForMat = logsForMat.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ยอดต้นงวดตั้งต้นจริง = ยอดคลังปัจจุบันถ้ามี หรือคำนวณจาก Log ก่อนหน้า + ค่าตั้งต้น
+      // รวมการเคลื่อนไหวก่อนช่วงที่เลือก
       const inBefore = before.filter(l => isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const outBefore = before.filter(l => !isTypeIn(l)).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
-      // ใช้ m.qty หากมีค่า หรือคำนวณต้นงวดแบบย้อนกลับคงที่
-      const baseStock = Number(m.qty || 0) > 0 ? Number(m.qty) + totalOutForMat - totalInForMat : 0;
+      // ย้อนฐานจากยอดปัจจุบัน รวมกรณียอดเป็นศูนย์หรือติดลบ
+      const currentQty = Number(m.qty ?? 0);
+      const baseStock = currentQty + totalOutForMat - totalInForMat;
       
       // ต้นงวด = ยอดตั้งต้น + ยอดรับก่อนหน้า - ยอดเบิกรวมก่อนหน้า
       const opening = baseStock + inBefore - outBefore;
@@ -175,7 +148,7 @@ const combinedLogs = [...stockLog, ...txLogs];
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>
-          {sub === 'current' ? `คลังวัตถุดิบ (${materials.length})` : sub === 'history' ? 'ประวัติเข้า-ออก' : 'ต้นงวด-ปลายงวด'}
+          {sub === 'current' ? `คลังวัตถุดิบ (${materials.length})` : sub === 'history' ? 'รับเข้า–เบิกตามรายงาน' : 'ต้นงวด-ปลายงวด'}
         </div>
         {sub === 'current' && role === 'admin' && <button onClick={onAdd} style={btnGhost}><Plus size={13} style={{ marginRight: 4 }} /> เพิ่มรายการ</button>}
       </div>
@@ -183,8 +156,14 @@ const combinedLogs = [...stockLog, ...txLogs];
       {role === 'admin' && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
           <button onClick={() => setSub('current')} style={{ ...tabBtn, ...(sub === 'current' ? tabBtnActive : {}) }}>รายการปัจจุบัน</button>
-          <button onClick={() => setSub('history')} style={{ ...tabBtn, ...(sub === 'history' ? tabBtnActive : {}) }}><History size={12} style={{ marginRight: 4 }} />ประวัติเข้า-ออก</button>
+          <button onClick={() => setSub('history')} style={{ ...tabBtn, ...(sub === 'history' ? tabBtnActive : {}) }}><History size={12} style={{ marginRight: 4 }} />รับเข้า–เบิกตามรายงาน</button>
           <button onClick={() => setSub('balance')} style={{ ...tabBtn, ...(sub === 'balance' ? tabBtnActive : {}) }}><BookOpen size={12} style={{ marginRight: 4 }} />ต้นงวด-ปลายงวด</button>
+        </div>
+      )}
+
+      {sub !== 'current' && role === 'admin' && (
+        <div style={{ fontSize: 10, color: C.textDim, marginBottom: 8 }}>
+          ยอดเบิกอ้างอิงวันที่สร้างรายการ เช่นเดียวกับหน้ารายงาน
         </div>
       )}
 
