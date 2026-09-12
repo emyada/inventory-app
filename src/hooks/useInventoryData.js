@@ -261,28 +261,27 @@ export function useInventoryData(role) {
     return { errors };
   }
 
-  async function cancelTransaction(tx, userId) {
-    suppressRealtimeRef.current = true;
-    const { data: deleted, error } = await supabase.from('transactions').delete().eq('id', tx.id).select();
-    if (error || !deleted || deleted.length === 0) {
-      return { error: 'ยกเลิกไม่สำเร็จ — อาจเกิน 30 นาทีแล้ว หรือไม่ใช่ออเดอร์ของคุณ ให้หัวหน้าช่างยกเลิกแทน' };
-    }
-    
-    // 1. คืนจำนวนสต๊อกวัตถุดิบกลับเข้าคลัง
-    const pickedLines = tx.bom_snapshot.filter(b => b.picked);
-    for (const b of pickedLines) {
-      const m = materialsById[b.material_id];
-      if (m) await supabase.from('materials').update({ qty: m.qty + b.qty }).eq('id', b.material_id);
-    }
-
-    // 2. ลบ Log ประวัติออกจากตาราง stock_log (เพื่อให้ชื่อหายไปจากหน้าคลังทันที)
-    await supabase.from('stock_log').delete().eq('order_ref', tx.order_ref);
-
-    await loadAll();
-    suppressRealtimeRef.current = false;
-    return { error: null };
-  }
-
+  async function cancelTransaction(tx, userId) {
+    suppressRealtimeRef.current = true;
+    const { data: deleted, error } = await supabase.from('transactions').delete().eq('id', tx.id).select();
+    if (error || !deleted || deleted.length === 0) {
+      return { error: 'ยกเลิกไม่สำเร็จ — อาจเกิน 30 นาทีแล้ว หรือไม่ใช่ออเดอร์ของคุณ ให้หัวหน้าช่างยกเลิกแทน' };
+    }
+    const pickedLines = tx.bom_snapshot.filter(b => b.picked);
+    for (const b of pickedLines) {
+      const m = materialsById[b.material_id];
+      if (m) await supabase.from('materials').update({ qty: m.qty + b.qty }).eq('id', b.material_id);
+    }
+    if (pickedLines.length) {
+      await supabase.from('stock_log').insert(pickedLines.map(b => ({
+        type: 'in', material_id: b.material_id, material_name: b.material_name, unit: b.unit, amount: b.qty,
+        order_ref: `ยกเลิก: ${tx.order_ref}`, staff_name: tx.staff_name, created_by: userId,
+      })));
+    }
+    await loadAll();
+    suppressRealtimeRef.current = false;
+    return { error: null };
+  }
   async function saveMaterial(m) {
     suppressRealtimeRef.current = true;
     if (m.id) await supabase.from('materials').update({ name: m.name, unit: m.unit, qty: m.qty }).eq('id', m.id);
