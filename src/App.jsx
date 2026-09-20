@@ -5,6 +5,8 @@ import { useInventoryData } from './hooks/useInventoryData';
 import { supabase } from './lib/supabaseClient';
 import { C, sans, mono, CATEGORIES, REPAIR_LABEL, btnPrimary } from './theme';
 import Login from './components/Login';
+import { inventoryV2Enabled } from './lib/inventoryV2Reads.js';
+const InventoryV2 = React.lazy(() => import('./views/InventoryV2.jsx'));
 import { Modal } from './components/Modal';
 import { ProduceForm } from './components/ProduceForm';
 import { MaterialForm } from './components/MaterialForm';
@@ -23,6 +25,10 @@ export default function App() {
 
   if (authLoading) return <CenteredMsg text="กำลังตรวจสอบการเข้าสู่ระบบ..." />;
   if (!session) return <Login />;
+  if (inventoryV2Enabled(import.meta.env.VITE_INVENTORY_V2_ENABLED)) {
+    if (!profile || profile.id !== session.user.id) return <CenteredMsg text="กำลังโหลดสิทธิ์ผู้ใช้…" />;
+    return <React.Suspense fallback={<CenteredMsg text="กำลังโหลด Inventory V2…" />}><InventoryV2 key={`${session.user.id}:${role}`} profile={profile} role={role} signOut={signOut} /></React.Suspense>;
+  }
   return <Workspace profile={profile} role={role} signOut={signOut} userId={session.user.id} />;
 }
 

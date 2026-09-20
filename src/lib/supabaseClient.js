@@ -1,3 +1,4 @@
+import { inventoryEnvironment } from './inventoryEnvironment.js';
 import { createClient } from '@supabase/supabase-js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -10,7 +11,7 @@ if (!url || !anonKey) {
   );
 }
 
-export const supabase = createClient(url, anonKey, {
+export const supabase = inventoryEnvironment.error ? null : createClient(url, anonKey, {
   auth: {
     persistSession: true,      // keep the login saved in the browser
     storage: window.localStorage,
@@ -22,6 +23,6 @@ export const supabase = createClient(url, anonKey, {
 // Ask the browser not to auto-clear this site's storage under low-disk-space
 // pressure. Mainly helps Android/Chrome; iOS Safari has its own separate
 // rules for "Add to Home Screen" apps (see note in App.jsx / README).
-if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+if (!inventoryEnvironment.error && typeof navigator !== 'undefined' && navigator.storage?.persist) {
   navigator.storage.persist().catch(() => {});
 }

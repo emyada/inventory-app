@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "test": "node --test src/lib/inventoryApi.test.js src/lib/inventoryV2Reads.test.js src/lib/inventoryWorkflow.test.js src/lib/inventoryRecovery.test.js src/lib/inventoryManagement.test.js src/lib/inventoryFailure.test.js src/lib/inventoryEnvironment.test.js",
+    "preview": "vite preview",
+    "dev:staging": "vite --mode staging --host 127.0.0.1 --port 5174 --strictPort",
+    "build:staging": "vite build --mode staging --outDir dist-staging"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
