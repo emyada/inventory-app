@@ -6,3 +6,6 @@ dist
 .env*.local
 .env.staging.local
 dist-staging
+
+# Local release-validation output
+dist-production-preflight

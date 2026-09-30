@@ -1,5 +1,5 @@
 export function cancelEligibility(row, role, userId) {
-  if (row.workflow_state === 'cancelled') return 'รายการนี้ยกเลิกแล้ว';
+  if (['cancelled','production_not_completed','legacy_completed_shipped'].includes(row.workflow_state)) return 'รายการนี้ยกเลิกแล้ว';
   if (role === 'admin') return null;
   if (role !== 'staff' || row.created_by !== userId) return 'ไม่มีสิทธิ์ยกเลิกคำขอนี้';
   if (Number(row.picked_lines) > 0 || row.bom_snapshot?.some(b => b.picked) || row.has_allocation) return 'เริ่มหยิบแล้ว ต้องให้หัวหน้ายกเลิกและคืนยอด';
@@ -12,10 +12,10 @@ export function workflowError(error) {
   if (/Only admin|issue\/allocation/i.test(message)) return `ต้องให้หัวหน้ายกเลิกและคืนยอด (${message})`;
   return message;
 }
-export function prepareWorkflow(api, kind, input, { role, userId, row } = {}) {
+export function prepareWorkflow(api, kind, input, { role, userId, row, model } = {}) {
   if (kind === 'create') {
     if (!['admin','staff'].includes(role)) throw new Error('ไม่มีสิทธิ์สร้างคำขอ');
-    if (!input.order_ref?.trim()) throw new Error('กรุณาระบุเลขออเดอร์');
+    if (!input.order_ref?.trim() && (input.repair_spec || model?.category!=='Universal' || model.id!==input.model_id)) throw new Error('กรุณาระบุเลขออเดอร์');
     if (input.repair_spec) {
       if (!input.repair_spec.note?.trim() || !input.repair_spec.bom?.length) throw new Error('งานซ่อมต้องมีหมายเหตุและวัตถุดิบ');
       return api.create_request({ model_id: null, order_ref: input.order_ref.trim(), repair_spec: {
@@ -24,7 +24,7 @@ export function prepareWorkflow(api, kind, input, { role, userId, row } = {}) {
       } });
     }
     if (!input.model_id) throw new Error('กรุณาเลือกรุ่น');
-    return api.create_request({ model_id: input.model_id, order_ref: input.order_ref.trim(), repair_spec: null });
+    return api.create_request({ model_id: input.model_id, order_ref: (input.order_ref||'').trim(), repair_spec: null });
   }
   if (kind === 'pick') {
     if (role !== 'admin') throw new Error('เฉพาะหัวหน้าจึงยืนยันหยิบได้');

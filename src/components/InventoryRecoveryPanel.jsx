@@ -39,15 +39,16 @@ export function InventoryRecoveryPanel({ recovery, onCompleted, onBlocked, mutat
       }else onBlocked(true);
     } finally {setBusy(false);}
   }
-  return <aside aria-label="กู้รายการค้าง" aria-busy={busy}>
-    {busy && <p role="status">กำลังตรวจผลรายการเดิม…</p>}
-    {error && <><p role="alert">{error}</p><button disabled={busy} onClick={()=>setScanVersion(v=>v+1)}>ตรวจรายการค้างอีกครั้ง</button></>}
-    {recovery.getWarning() && <p role="alert">{recovery.getWarning().message}</p>}
-    {rows.map(row=><div key={row.operation_id}><p>{row.rpc_name} · {row.operation_id} · {new Date(row.created_at).toLocaleString()}</p>
-      <p>{states[row.operation_id]==='not_found' ? 'ยังไม่พบผล ไม่ได้สร้าง UUID ใหม่' : 'ต้องตรวจสอบ/รอผลเดิม'}</p>
-      <button disabled={busy} onClick={()=>run(row,false)}>ตรวจผลเดิมอีกครั้ง</button>
-      {mutationsEnabled && states[row.operation_id]==='not_found' && <button disabled={busy} onClick={()=>run(row,true)}>ลอง payload เดิมด้วย UUID เดิม</button>}
+  return <aside className="inv-recovery" aria-label="ตรวจสอบรายการค้าง" aria-busy={busy}>
+    {busy && <p role="status">กำลังตรวจสอบผลการบันทึก…</p>}
+    {error && <><p role="alert">{error}</p><button disabled={busy} onClick={()=>setScanVersion(v=>v+1)}>ตรวจสอบอีกครั้ง</button></>}
+    {recovery.getWarning() && <p role="alert">การเก็บสถานะในเครื่องมีปัญหา กรุณาตรวจผลก่อนส่งซ้ำ</p>}
+    {rows.map(row=><div key={row.operation_id}><p>มีรายการที่ยังยืนยันผลไม่ได้ · {new Date(row.created_at).toLocaleString('th-TH')}</p>
+      <p>{states[row.operation_id]==='not_found'?'ยังไม่พบผลบันทึก สามารถส่งรายการเดิมอีกครั้งโดยไม่สร้างรายการซ้ำ':'กำลังรอผล กรุณาตรวจสอบอีกครั้ง'}</p>
+      <button disabled={busy} onClick={()=>run(row,false)}>ตรวจสอบผล</button>
+      {mutationsEnabled && states[row.operation_id]==='not_found' && <button disabled={busy} onClick={()=>run(row,true)}>ส่งรายการเดิมอีกครั้ง</button>}
+      <details><summary>ข้อมูลสำหรับแจ้งปัญหา</summary><code>{row.operation_id}</code></details>
     </div>)}
-    {results.map(r=><div key={r.id}><p role="status">ยืนยันผลเดิมแล้ว: {r.id}</p><pre>{JSON.stringify(r.result,null,2)}</pre>{r.result?.pending_request_count!==undefined && <p role="status">คำเตือน: รุ่นนี้มีงานค้าง {r.result.pending_request_count} งาน งานเดิมดำเนินต่อได้ตามสิทธิ์</p>}</div>)}
+    {results.length>0&&<p role="status">ตรวจสอบแล้ว พบรายการบันทึกสำเร็จ {results.length} รายการ</p>}
   </aside>;
 }

@@ -38,7 +38,7 @@ test('definitive RPC failure is terminal; retry does not resend or allocate UUID
   assert.equal(op.getSnapshot().status, 'failed'); assert.equal(op.getSnapshot().error.code, 'P0001');
   await assert.rejects(op.retry()); assert.equal(ids, 1); assert.equal(calls, 1);
 });
-test('all 16 RPCs use named parameters and only mutations have operation IDs', async () => {
+test('all 20 RPCs use named parameters and only mutations have operation IDs', async () => {
   const calls = [];
   const api = createInventoryApi({ rpc: async (name, args) => { calls.push({ name, args }); return { data: [], error: null }; } }, { uuid: () => 'op' });
   for (const [name, params] of Object.entries(mutationParameters)) {
@@ -47,7 +47,7 @@ test('all 16 RPCs use named parameters and only mutations have operation IDs', a
     assert.deepEqual(calls.at(-1), { name: `inventory_${name}`, args: { ...Object.fromEntries(params.split(' ').map(p => [`p_${p}`, null])), p_operation_id: 'op' } });
   }
   for (const name of Object.keys(readParameters)) await api[name]();
-  assert.equal(calls.length, 16); assert.ok(calls.slice(10).every(c => !('p_operation_id' in c.args)));
+  assert.equal(calls.length, 20); assert.ok(calls.slice(12).every(c => !('p_operation_id' in c.args)));
 });
 test('rejects client quantity/status/operation overrides before network access', () => {
   const api = createInventoryApi({ rpc: () => assert.fail('unexpected network') });

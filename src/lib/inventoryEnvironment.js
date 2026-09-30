@@ -1,7 +1,8 @@
-export const STAGING_READ_ONLY_BANNER = 'STAGING — READ ONLY';
 export function inventoryEnvironmentPolicy(env = {}) {
   const v2Enabled=env.VITE_INVENTORY_V2_ENABLED==='true';
   const mutationsEnabled=env.VITE_INVENTORY_MUTATIONS_ENABLED==='true';
+  const environmentName=env.VITE_INVENTORY_ENVIRONMENT || env.MODE || 'staging';
+  const environmentLabel=environmentName==='production'?'PRODUCTION':environmentName==='staging'?'STAGING':'LOCAL';
   let projectRef=null,error=null;
   if(!env.VITE_SUPABASE_URL?.trim() || !env.VITE_SUPABASE_ANON_KEY?.trim()) error='Supabase configuration missing; application blocked';
   if(v2Enabled){
@@ -13,8 +14,8 @@ export function inventoryEnvironmentPolicy(env = {}) {
       if(!/^[a-z0-9]{20}$/.test(env.VITE_SUPABASE_EXPECTED_PROJECT_REF||'') || projectRef!==env.VITE_SUPABASE_EXPECTED_PROJECT_REF) throw new Error('Supabase project ref mismatch');
     }catch{error='Inventory V2 blocked: project URL/ref configuration does not match';}
   }
-  return Object.freeze({v2Enabled,mutationsEnabled,projectRef,error,
-    banner:v2Enabled&&!mutationsEnabled?STAGING_READ_ONLY_BANNER:null});
+  return Object.freeze({v2Enabled,mutationsEnabled,projectRef,error,environmentName,
+    banner:v2Enabled&&!mutationsEnabled?environmentLabel+' \u2014 READ ONLY':null});
 }
 export function assertInventoryEnvironment(policy) {
   if(policy.error || !policy.v2Enabled){
@@ -23,7 +24,7 @@ export function assertInventoryEnvironment(policy) {
   }
 }
 export function assertInventoryMutation(enabled) {
-  if(enabled!==true){const error=new Error('STAGING — READ ONLY: inventory mutations disabled');error.code='INVENTORY_MUTATIONS_DISABLED';throw error;}
+  if(enabled!==true){const error=new Error('READ ONLY: inventory mutations disabled');error.code='INVENTORY_MUTATIONS_DISABLED';throw error;}
 }
 export async function bootstrapInventory(policy, {load,render,blocked}) {
   if(policy.error){blocked(policy.error);return false;}

@@ -12,11 +12,15 @@ export const mutationParameters = Object.freeze({
   create_request: 'model_id order_ref repair_spec',
   confirm_pick: 'items',
   cancel_request: 'transaction_id reason legacy_return_verified',
+  close_not_completed: 'transaction_id reason returns',
+  issue_finished: 'packing_request_id quantity reference note',
   save_model: 'model_id name category bom',
   set_model_active: 'model_id is_active reason',
 });
 export const readParameters = Object.freeze({
   get_operation_result: 'operation_id',
+  list_finished_stock: '',
+  finished_balance_report: 'date_from date_to timezone',
   list_materials: 'include_inactive',
   list_my_requests: 'after_at after_id limit',
   list_pick_queue: 'after_at after_id limit',
@@ -25,7 +29,7 @@ export const readParameters = Object.freeze({
 });
 function parameters(allowed, input) {
   if (!input || Array.isArray(input) || typeof input !== 'object') throw new Error('RPC input must be an object');
-  const keys = allowed.split(' ');
+  const keys = allowed.split(' ').filter(Boolean);
   for (const key of Object.keys(input)) {
     if (!keys.includes(key)) throw new Error(`Unsupported RPC parameter: ${key}`);
   }

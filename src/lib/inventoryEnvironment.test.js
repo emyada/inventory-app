@@ -16,13 +16,13 @@ function configured(settings=env){
   {mutationsEnabled:policy.mutationsEnabled,assertAccess:()=>assertInventoryEnvironment(policy),uuid:()=>assert.fail('unexpected UUID')});
  return {policy,api,calls};
 }
-test('matching expected ref: boot and all six read RPCs work with mutations default false',async()=>{
+test('matching expected ref: boot and all eight read RPCs work with mutations default false',async()=>{
  const {policy,api,calls}=configured();let rendered=false;
  assert.equal(policy.error,null);assert.equal(policy.mutationsEnabled,false);
  await bootstrapInventory(policy,{load:async()=>({ok:true}),render:v=>rendered=v.ok,blocked:()=>assert.fail('blocked')});
- assert.equal(rendered,true);assert.equal(Object.keys(readParameters).length,6);
+ assert.equal(rendered,true);assert.deepEqual(Object.keys(readParameters).sort(),['get_operation_result','list_finished_stock','finished_balance_report','list_materials','list_my_requests','list_pick_queue','balance_report','list_movements'].sort());
  for(const name of Object.keys(readParameters))await api[name](name==='get_operation_result'?{operation_id:U}:{});
- assert.equal(calls.length,6);
+ assert.equal(calls.length,8);
 });
 test('mismatch: no App/Auth import, no render and no RPC including reads',async()=>{
  const {policy,api,calls}=configured({...env,VITE_SUPABASE_EXPECTED_PROJECT_REF:'zzzzzzzzzzzzzzzzzzzz'});
@@ -90,4 +90,14 @@ test('staging example has no credentials; scripts/local ignores are configured',
  const pkg=JSON.parse(readFileSync('package.json','utf8'));assert.match(pkg.scripts['dev:staging'],/--mode staging/);
  assert.match(pkg.scripts['build:staging'],/--mode staging/);
  const ignored=readFileSync('.gitignore','utf8');assert.ok(ignored.includes('.env*.local'));assert.ok(ignored.includes('.env.staging.local'));
+});
+
+test('production read-only label is environment-driven and never identifies staging',()=>{
+ const p=inventoryEnvironmentPolicy({...env,MODE:'production',VITE_INVENTORY_ENVIRONMENT:'production'});
+ assert.equal(p.environmentName,'production');
+ assert.equal(p.banner,'PRODUCTION \u2014 READ ONLY');
+ assert.equal(p.mutationsEnabled,false);
+ const html=renderToStaticMarkup(createElement(InventoryModeBanner,{policy:p}));
+ assert.ok(html.includes('PRODUCTION'));assert.ok(!html.includes('STAGING'));
+ assert.ok(!readFileSync('src/views/InventoryV2.jsx','utf8').includes('qowhwyiooxxvdbnerlpa'));
 });
