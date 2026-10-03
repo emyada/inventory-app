@@ -2,7 +2,7 @@
 export const PRODUCT_CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'Universal'];
 export const WORKFLOW_LABELS = {legacy_completed_shipped:'Completed/shipped (legacy attestation)',pending:'รอหยิบ', partially_picked:'หยิบบางส่วน', completed:'เบิกครบแล้ว', cancelled:'ยกเลิกแล้ว', production_not_completed:'ผลิตไม่สำเร็จ / คืนแล้ว'};
 export const MOVEMENT_LABELS = {opening_balance:'ยอดตั้งต้นเพิ่มเติม',purchase:'รับเข้า',production_issue:'เบิกออก',cancellation_return:'คืนจากการยกเลิก',stocktake_adjustment_in:'ปรับเพิ่มจากการนับ',stocktake_adjustment_out:'ปรับลดจากการนับ'};
-export const workspaceTabs = role => role==='admin' ? ['floor','queue','materials','requests','report'] : role==='staff' ? ['floor','requests'] : role==='purchasing' ? ['materials','report'] : [];
+export const workspaceTabs = role => role==='admin' ? ['floor','requests','materials','report'] : role==='staff' ? ['floor','requests'] : role==='purchasing' ? ['materials','report'] : [];
 function parts(value) {
   const match=/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
   if(!match) throw new Error('ข้อมูลจำนวนไม่ถูกต้อง ไม่สามารถสรุปรายงานได้');
@@ -44,7 +44,7 @@ export function requirementRows(requests,from,to) {
   return requests.filter(r=>byId.has(r.id)).flatMap(r=>(r.bom_snapshot||[]).map(line=>({...byId.get(r.id),line_id:line.line_id||'',material_id:line.material_id,material_name:line.material_name,unit:line.unit,required_qty:line.qty,requires_picking:line.requires_picking!==false,picked:line.picked===true})));
 }
 export function movementRows(movements,from,to) {
-  validatePeriod(from,to);return movements.filter(m=>inPeriod(m.occurred_at,from,to)).map(({allocations: _allocations,...row})=>row);
+  validatePeriod(from,to);return movements.filter(m=>inPeriod(m.occurred_at,from,to)).map(({allocations: _allocations,...row})=>({...row,supplier_source:row.receipt_document?.supplier_source??'',document_type:row.receipt_document?.document_type??'',po_number:row.receipt_document?.po_number??'',invoice_number:row.receipt_document?.invoice_number??''}));
 }
 export function allocationRows(movements,requests,from,to) {
   const byId=new Map(requests.map(r=>[r.id,r]));
@@ -92,13 +92,35 @@ export async function loadAllMovements(api) {
     if(result.rows.length<500)return {rows,cutoff};
   }throw new Error('ประวัติมากเกินขอบเขต หยุดโดยไม่ส่งออกบางส่วน');
 }
+export async function loadCategoryUsage(api,from,to,cutoff) {
+ const rows=[];const seen=new Set();let after=0;
+ for(let page=0;page<1000;page++){
+  const result=await api.purchase_category_usage_report({date_from:from,date_to:to,after_sequence:after,cutoff_sequence:cutoff,limit:500});
+  if(!Array.isArray(result?.rows)||result.cutoff_sequence!==cutoff||!Number.isSafeInteger(result.next_sequence)||result.next_sequence<after||result.next_sequence>cutoff||typeof result.has_more!=='boolean'||(result.has_more&&result.next_sequence<=after))throw new Error('Invalid category usage pagination');
+  for(const row of result.rows){
+   if(!Number.isSafeInteger(row.sequence_no)||row.sequence_no<=after||row.sequence_no>result.next_sequence||!['production_issue','cancellation_return'].includes(row.reason))throw new Error('Invalid category usage row');
+   const key=JSON.stringify([row.sequence_no,row.category,row.model_id,row.model_name,row.material_id]);
+   if(seen.has(key))throw new Error('Duplicate category usage row');seen.add(key);rows.push(row);
+  }
+  if(!result.has_more)return rows;after=result.next_sequence;
+ }
+ throw new Error('Category usage page limit exceeded');
+}
+export function assertCategoryReconciliation(movements,usage,from,to) {
+ const expected=new Map();const actual=new Map();
+ for(const m of movements.filter(m=>inPeriod(m.occurred_at,from,to)&&['production_issue','cancellation_return'].includes(m.reason)))expected.set(m.sequence_no,sumAmounts((m.allocations||[]).map(a=>a.delta)));
+ for(const r of usage){if(!expected.has(r.sequence_no))throw new Error('Category usage contains an unknown movement');actual.set(r.sequence_no,sumAmounts([actual.get(r.sequence_no)||'0',r.allocated_delta]));}
+ for(const [seq,total] of expected)if(total!==(actual.get(seq)||'0'))throw new Error('Category usage does not reconcile with allocations');
+}
 export async function loadReportData(api,role,from,to) {
   if(!['admin','purchasing'].includes(role))throw new Error('ไม่มีสิทธิ์ดูรายงาน');validatePeriod(from,to);
   const [requests,movementData]=await Promise.all([role==='admin'?loadAllRequests(api):Promise.resolve([]),loadAllMovements(api)]);
+  const categoryUsage=role==='purchasing'?await loadCategoryUsage(api,from,to,movementData.cutoff):null;
+  if(categoryUsage)assertCategoryReconciliation(movementData.rows,categoryUsage,from,to);
   const balance=await api.balance_report({date_from:from,date_to:to,timezone:'Asia/Bangkok'});
   if(!Array.isArray(balance?.materials))throw new Error('ข้อมูลยอดคงเหลือไม่สมบูรณ์');
   const activity=materialActivity(movementData.rows,from,to);
-  return {requests,movements:movementData.rows,balances:balance.materials,activity,cutoff:movementData.cutoff,capturedAt:new Date().toISOString(),mismatches:balanceMismatches(balance.materials,activity)};
+  return {requests,categoryUsage,movements:movementData.rows,balances:balance.materials,activity,cutoff:movementData.cutoff,capturedAt:new Date().toISOString(),mismatches:balanceMismatches(balance.materials,activity)};
 }
 // Formula-safe CSV. Human report names remain unchanged except dangerous spreadsheet prefixes.
 export function reportCSV(rows,columns,meta) {

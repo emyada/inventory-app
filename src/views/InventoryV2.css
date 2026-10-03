@@ -112,3 +112,44 @@
 .inventory-v2 .inv-stats button {flex:1;min-width:140px;}
 .inventory-v2 .inv-stats strong {display:block;font-size:24px;}
 @media(min-width:860px){.inventory-v2 .inv-modal-backdrop{align-items:center;}.inventory-v2 .inv-modal{border-radius:16px;}}
+
+/* Compact mobile workflow; preserve desktop density and all report columns. */
+.inventory-v2, .inventory-v2 * {box-sizing:border-box;}
+.inventory-v2 .inv-shell,.inventory-v2 .inv-content,.inventory-v2 .inv-brand,.inventory-v2 .inv-brand>div {min-width:0;min-height:0;}
+.inventory-v2 .inv-header,.inventory-v2 .inv-bottom {flex-shrink:0;}
+.inventory-v2 .inv-content {overscroll-behavior:contain;}
+.inventory-v2 .grid-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;}
+.inventory-v2 .inv-card,.inventory-v2 .inv-reports {min-width:0;max-width:100%;}
+.inventory-v2 .inv-table-scroll {width:100%;overscroll-behavior-x:contain;}
+.inventory-v2 .inv-modal {overscroll-behavior:contain;padding-bottom:max(20px,env(safe-area-inset-bottom));scroll-padding-bottom:72px;}
+.inventory-v2 .inv-bottom button {min-width:0;}
+.inventory-v2 input,.inventory-v2 select,.inventory-v2 textarea {min-width:0;}
+@media(max-width:600px){
+ .inventory-v2 .inv-header {padding:8px;gap:6px;}
+ .inventory-v2 .inv-brand {gap:6px;flex:1;}
+ .inventory-v2 .inv-brand h1 {font-size:13px;}
+ .inventory-v2 .inv-brand p {font-size:11px;}
+ .inventory-v2 .inv-user-name {display:none;}
+ .inventory-v2 .inv-header .inv-actions {flex-wrap:nowrap;gap:2px;}
+ .inventory-v2 .inv-header button {min-width:44px;min-height:44px;padding:8px;margin:0;}
+ .inventory-v2 .inv-content {padding:10px;}
+ .inventory-v2 .inv-subnav {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+ .inventory-v2 .inv-subnav button {min-width:0;margin:0;overflow-wrap:anywhere;}
+ .inventory-v2 .inv-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+ .inventory-v2 .inv-filters label {min-width:0;}
+ .inventory-v2 .inv-filters input,.inventory-v2 select {min-height:44px;}
+ .inventory-v2 .inv-modal {padding:14px;max-height:94dvh;}
+ .inventory-v2 .inv-bom-line {display:grid;grid-template-columns:minmax(0,1fr);}
+ .inventory-v2 .inv-form button[type=submit] {width:100%;margin:8px 0;min-height:44px;}
+ .inventory-v2 .inv-stats {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+ .inventory-v2 .inv-stats button {min-width:0;margin:0;}
+ .inventory-v2 .inv-bottom button {font-size:11px;min-height:56px;}
+}
+
+.inventory-v2 .inv-chips {display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none;}
+.inventory-v2 .inv-chips li {display:flex;align-items:center;gap:8px;border:1px solid #cbd5e1;border-radius:20px;padding:0 4px 0 12px;max-width:100%;}
+.inventory-v2 .inv-chips span {overflow-wrap:anywhere;min-width:0;}
+.inventory-v2 .inv-chips button {min-width:44px;min-height:44px;margin:0;}
+.inventory-v2 .inv-chip-entry {display:flex;gap:8px;align-items:center;}
+.inventory-v2 .inv-chip-entry input {flex:1;min-width:0;}
+.inventory-v2 .inv-pick-summary details {padding:10px;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;}

@@ -7,9 +7,8 @@ import {createUserInventory} from '../lib/inventoryRpcClient.js';
 import {InventoryRecoveryPanel} from '../components/InventoryRecoveryPanel.jsx';
 import {InventoryManagementForm} from '../components/InventoryManagementForm.jsx';
 import {InventoryWorkflowForm} from '../components/InventoryWorkflowForm.jsx';
-import {ModelsFloor, MaterialsPanel, RequestsPanel} from '../components/InventoryWorkspacePanels.jsx';
+import {ModelsFloor, MaterialsPanel, RequestsPanel, SupervisorRequests} from '../components/InventoryWorkspacePanels.jsx';
 import {InventoryExtensionForm} from '../components/InventoryExtensionForm.jsx';
-import {InventoryFinishedStock} from '../components/InventoryFinishedStock.jsx';
 import {InventoryReports} from '../components/InventoryReports.jsx';
 import {managementKinds} from '../lib/inventoryManagement.js';
 import {workspaceTabs} from '../lib/inventoryReports.js';
@@ -24,20 +23,20 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
   const close=()=>{setTask(null);setRecoveryBlocked(Boolean(recovery));};
   const actionBusy=!mutationsEnabled||Boolean(task)||recoveryBlocked;
   return <main className="inventory-v2"><div className="inv-shell">
-    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p>{profile?.full_name} · {role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':'พนักงาน'}</p></div></div><div className="inv-actions"><button aria-label="โหลดข้อมูลใหม่" disabled={Boolean(task)} onClick={refresh}><RefreshCw size={18}/></button><button aria-label="ออกจากระบบ" disabled={Boolean(task)} onClick={signOut}><LogOut size={18}/></button></div></header>
+    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p title={profile?.full_name}><span className="inv-user-name">{profile?.full_name} · </span>{role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':'พนักงาน'}</p></div></div><div className="inv-actions"><button aria-label="โหลดข้อมูลใหม่" disabled={Boolean(task)} onClick={refresh}><RefreshCw size={18}/></button><button aria-label="ออกจากระบบ" disabled={Boolean(task)} onClick={signOut}><LogOut size={18}/></button></div></header>
     <InventoryModeBanner policy={inventoryEnvironment}/>
     {inventoryEnvironment.environmentName==='staging'&&mutationsEnabled&&<aside className="inv-environment">STAGING — สภาพแวดล้อมทดสอบ</aside>}
     <div className="inv-content">
       {recovery&&!task&&<InventoryRecoveryPanel mutationsEnabled={mutationsEnabled} recovery={recovery} onCompleted={refresh} onBlocked={setRecoveryBlocked}/>}
       {tab==='floor'&&['admin','staff'].includes(role)&&<ModelsFloor role={role} revision={revision} onAction={setTask} actionBusy={!mutationsEnabled||Boolean(task)||recoveryBlocked}/>}
-      {tab==='materials'&&['admin','purchasing'].includes(role)&&<><InventoryFinishedStock api={api} role={role} revision={revision} onAction={setTask} actionBusy={actionBusy}/><MaterialsPanel api={api} role={role} revision={revision} onAction={setTask} actionBusy={actionBusy}/></>}
-      {tab==='requests'&&['admin','staff'].includes(role)&&<RequestsPanel api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
-      {tab==='queue'&&role==='admin'&&<RequestsPanel queue api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
+      {tab==='materials'&&['admin','purchasing'].includes(role)&&<><MaterialsPanel api={api} role={role} revision={revision} onAction={setTask} actionBusy={actionBusy}/></>}
+      {tab==='requests'&&role==='staff'&&<RequestsPanel api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
+      {tab==='requests'&&role==='admin'&&<SupervisorRequests api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
       {tab==='report'&&['admin','purchasing'].includes(role)&&<InventoryReports api={api} role={role} revision={revision}/>}
       {!tabs.includes(tab)&&<p role="alert">ไม่มีสิทธิ์เปิดหน้านี้</p>}
     </div>
-    <nav className="inv-bottom" aria-label="เมนูหลัก">{tabs.map(key=>{const Icon=icons[key];return <button key={key} aria-current={tab===key?'page':undefined} disabled={Boolean(task)} onClick={()=>setTab(key)}><Icon size={20}/><span>{key==='requests'&&role==='staff'?'คำขอของฉัน':labels[key]}</span></button>;})}</nav>
+    <nav className="inv-bottom" aria-label="เมนูหลัก">{tabs.map(key=>{const Icon=icons[key];return <button key={key} aria-current={tab===key?'page':undefined} disabled={Boolean(task)} onClick={()=>setTab(key)}><Icon size={20}/><span>{key==='requests'?(role==='staff'?'คำขอของฉัน':'จัดการคำขอ'):labels[key]}</span></button>;})}</nav>
     {task && mutationsEnabled && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="ทำรายการคลังสินค้า">
-      {['close_not_completed','issue_finished'].includes(task.kind)?<InventoryExtensionForm key={task.kind+String(task.row?.id||task.row?.request_id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:managementKinds.includes(task.kind)?<InventoryManagementForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:<InventoryWorkflowForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} userId={profile.id} profile={profile} onClose={close} onSuccess={refresh}/>}</div></div>}
+      {task.kind==='close_not_completed'?<InventoryExtensionForm key={task.kind+String(task.row?.id||task.row?.request_id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:managementKinds.includes(task.kind)?<InventoryManagementForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:<InventoryWorkflowForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} userId={profile.id} profile={profile} onClose={close} onSuccess={refresh}/>}</div></div>}
   </div></main>;
 }

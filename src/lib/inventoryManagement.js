@@ -1,5 +1,5 @@
-export const managementKinds = ['create_material','update_material','set_material_active','receive_purchase','stocktake','save_model','set_model_active'];
-export const canManage = (role, kind) => managementKinds.includes(kind) && (role === 'admin' || (role === 'purchasing' && kind === 'receive_purchase'));
+export const managementKinds = ['create_material','update_material','set_material_active','receive_purchase','receive_purchase_v21','stocktake','save_model','set_model_active'];
+export const canManage = (role, kind) => managementKinds.includes(kind) && (role === 'admin' || (role === 'purchasing' && ['receive_purchase','receive_purchase_v21'].includes(kind)));
 const text = (value, label) => { if (typeof value !== 'string' || !value.trim()) throw new Error('กรุณาระบุ'+label); return value.trim(); };
 const id = value => { if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value ?? '')) throw new Error('UUID ไม่ถูกต้อง'); return value; };
 export function decimal(value, positive = false) {
@@ -45,6 +45,17 @@ export function managementPayload(kind, input, role, row) {
   if (kind==='set_material_active' || kind==='set_model_active') return {
     [kind==='set_material_active'?'material_id':'model_id']:id(row?.id),is_active:flag(input.is_active),reason:text(input.reason,'เหตุผล')};
   if (kind==='receive_purchase') return {material_id:id(row?.id),quantity:decimal(input.quantity,true),reference:(input.reference||'').trim(),note:(input.note||'').trim()};
+  if (kind==='receive_purchase_v21') {
+    const type=input.document_type;
+    if(!['none','po','invoice','both'].includes(type))throw new Error('Invalid receipt document type');
+    const optional=(value,max)=>{const s=(value||'').trim();if(s.length>max)throw new Error('Receipt document field too long');return s||null;};
+    const required=(value)=>{const s=optional(value,200);if(!s)throw new Error('Document number required');return s;};
+    return {material_id:id(row?.id),quantity:decimal(input.quantity,true),
+      supplier_source:optional(input.supplier_source,500),document_type:type,
+      po_number:['po','both'].includes(type)?required(input.po_number):null,
+      invoice_number:['invoice','both'].includes(type)?required(input.invoice_number):null,
+      note:(input.note||'').trim()};
+  }
   if (kind==='stocktake') {
     const counted=decimal(input.counted_qty);const reason=(input.reason||'').trim();
     if (counted!==decimal(row?.qty)) text(reason,'เหตุผลเมื่อยอดต่าง');

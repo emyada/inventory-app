@@ -3,7 +3,7 @@ import { createInventoryApi, mutationParameters } from './inventoryApi.js';
 import { rpcData, isDefinitiveFailure, retainFailure } from './inventoryFailure.js';
 import { fingerprint } from './inventoryOperation.js';
 const isUuid = v => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-const kinds = { set_material_active: 'archive_material', receive_purchase: 'purchase', close_not_completed: 'cancel_request', issue_finished: 'finished_out' };
+const kinds = { set_material_active: 'archive_material', receive_purchase: 'purchase', receive_purchase_v21: 'purchase', close_not_completed: 'cancel_request', issue_finished: 'finished_out' };
 export function createRecoveryInventory(client, { userId, currentUserId, storage, uuid, now = Date.now, mutationsEnabled = false, assertAccess = () => {} } = {}) {
   if (!isUuid(userId) || typeof currentUserId !== 'function') throw new Error('Recovery requires a user UUID');
   const prefix = `inventory.replay.v2:${userId}:`;

@@ -1,9 +1,11 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Search, Plus, PackagePlus, Pencil, AlertTriangle} from 'lucide-react';
 import {managementCatalog} from '../lib/inventoryModelCatalog.js';
-import {loadAllRequests, PRODUCT_CATEGORIES, WORKFLOW_LABELS, sumAmounts} from '../lib/inventoryReports.js';
+import {loadAllRequests, PRODUCT_CATEGORIES, WORKFLOW_LABELS} from '../lib/inventoryReports.js';
+import {buildPickRound} from '../lib/inventoryPickRound.js';
 import {manualPendingLines} from '../lib/inventoryV2Reads.js';
 import {canCloseNotCompleted} from '../lib/inventoryExtensions.js';
+import {filterRequests,employeeStatus} from '../lib/inventoryRequestUX.js';
 import {cancelEligibility} from '../lib/inventoryWorkflow.js';
 function useRead(load,revision) {
   const [state,setState]=useState({busy:true,error:null,rows:[]});
@@ -18,9 +20,9 @@ export function ModelsFloor({role,revision,onAction,actionBusy}) {
     <nav className="inv-subnav">{[...new Set([...PRODUCT_CATEGORIES,...state.rows.map(m=>m.category)])].map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}<button disabled={actionBusy} onClick={()=>onAction({kind:'create',repair:true})}>ซ่อมและอื่นๆ</button></nav>
     <label className="inv-search"><Search size={16}/><input aria-label="ค้นหารุ่น" placeholder="ค้นหารุ่น…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
     {role==='admin'&&<label><input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/> แสดงรุ่นที่ปิดใช้งาน</label>}
-    {category==='Universal'&&<aside className="inv-notice">Universal: เลือกรุ่นเพื่อเปิดงานแพ็ก 1 ชิ้นตาม BOM ของรุ่น ยอดสำเร็จรูปเพิ่มเมื่อเบิกวัตถุดิบครบ ไม่ต้องระบุชื่อลูกค้า</aside>}
+    {category==='Universal'&&<aside className="inv-notice">Universal: บันทึกการเบิกวัตถุดิบตาม BOM การวางแผนสินค้าสำเร็จรูปทำภายนอกระบบ</aside>}
     <ReadState state={state}/><div className="grid-list">{rows.map(m=><article className="inv-card" key={m.id}><h3>{m.name}</h3><p>{m.category} · {m.is_active?'ใช้งาน':'ปิดใช้งาน'}</p>
-      <button className="inv-primary" disabled={actionBusy||!m.is_active} onClick={()=>onAction({kind:'create',model:m})}>{m.category==='Universal'?'เปิดงานแพ็ก':'ยื่นคำขอเบิก'}</button>
+      <button className="inv-primary" disabled={actionBusy||!m.is_active} onClick={()=>onAction({kind:'create',model:m})}>{'ยื่นคำขอเบิก'}</button>
       {role==='admin'&&<div className="inv-actions"><button disabled={actionBusy} onClick={()=>onAction({kind:'save_model',row:m})}><Pencil size={14}/> แก้ไขรุ่น / BOM</button><button disabled={actionBusy} onClick={()=>onAction({kind:'set_model_active',row:m})}>{m.is_active?'ปิด':'เปิด'}ใช้งาน</button></div>}</article>)}</div>
     {!state.busy&&!state.error&&!rows.length&&<p>ไม่มีรุ่นในหมวด/คำค้นนี้</p>}
   </section>;
@@ -32,7 +34,7 @@ export function MaterialsPanel({api,role,revision,onAction,actionBusy}) {
     <div className="inv-filters"><label>ค้นหาวัตถุดิบ<input value={search} onChange={e=>setSearch(e.target.value)}/></label><label><input type="checkbox" checked={low} onChange={e=>setLow(e.target.checked)}/> เฉพาะใกล้หมด</label><label><input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/> รวมที่ปิดใช้งาน</label></div>
     <ReadState state={state}/><div className="grid-list">{rows.map(m=><article className="inv-card" key={m.id}><h3>{m.name}</h3><strong className="inv-balance">{m.qty} {m.unit}</strong><p>ระดับแจ้งเตือน {m.low_stock_threshold} {m.unit} · {m.requires_picking?'ต้องหยิบ':'ใช้โดยอัตโนมัติเมื่องานเบิกครบ'}</p>{Number(m.qty)<=Number(m.low_stock_threshold)&&<p className="inv-warning"><AlertTriangle size={14}/> ใกล้หมด</p>}
       {!m.is_active&&<p>ปิดใช้งาน</p>}<div className="inv-actions">
-      {['admin','purchasing'].includes(role)&&<button className="inv-primary" disabled={actionBusy||!m.is_active} onClick={()=>onAction({kind:'receive_purchase',row:m})}><PackagePlus size={16}/> รับเข้า</button>}
+      {['admin','purchasing'].includes(role)&&<button className="inv-primary" disabled={actionBusy||!m.is_active} onClick={()=>onAction({kind:'receive_purchase_v21',row:m})}><PackagePlus size={16}/> รับเข้า</button>}
       {role==='admin'&&<><button disabled={actionBusy} onClick={()=>onAction({kind:'update_material',row:m})}>แก้ไขข้อมูล</button><button disabled={actionBusy} onClick={()=>onAction({kind:'stocktake',row:m})}>ตรวจนับ</button><button disabled={actionBusy} onClick={()=>onAction({kind:'set_material_active',row:m})}>{m.is_active?'ปิด':'เปิด'}ใช้งาน</button></>}</div></article>)}</div>
   </section>;
 }
@@ -43,19 +45,30 @@ async function queueRows(api) {
     const last=batch.at(-1);cursor={after_at:last.created_at,after_id:last.id};
   }throw new Error('คิวมีข้อมูลเกินขอบเขต');
 }
+export function SupervisorRequests(props) {
+ const [view,setView]=useState('queue');
+ return <section><h2>จัดการคำขอ</h2><nav className="inv-subnav" aria-label="มุมมองหัวหน้า">{[['queue','คิวหยิบ'],['all','คำขอทั้งหมด']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>setView(key)}>{label}</button>)}</nav><RequestsPanel key={view} {...props} queue={view==='queue'}/></section>;
+}
 export function RequestsPanel({api,role,userId,queue=false,revision,onAction,actionBusy}) {
   const state=useRead(useCallback(()=>queue?queueRows(api):loadAllRequests(api),[api,queue]),revision);const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [page,setPage]=useState(0);
-  const rows=state.rows.filter(r=>(!status||r.workflow_state===status)&&`${r.order_ref} ${r.model_name} ${r.staff_name}`.toLowerCase().includes(search.toLowerCase()));
+  const [dateBasis,setDateBasis]=useState('created');const [view,setView]=useState('active');const [from,setFrom]=useState('');const [to,setTo]=useState('');
+  const employee=role==='staff'&&!queue;const showDates=!queue&&(!employee||view==='history');
+  const invalidPeriod=showDates&&from&&to&&from>to;
+  const rows=invalidPeriod?[]:filterRequests(state.rows,{view:employee?view:'all',search,status:employee?'':status,from:showDates?from:'',to:showDates?to:'',dateBasis});
   const last=Math.max(0,Math.ceil(rows.length/25)-1);const current=Math.min(page,last);
-  const totals=new Map();if(queue)for(const r of rows)for(const line of manualPendingLines(r)){const prior=totals.get(line.material_id)||{name:line.material_name,unit:line.unit,qty:'0'};prior.qty=sumAmounts([prior.qty,line.qty]);totals.set(line.material_id,prior);}
+  let round=[],roundError='';if(queue)try{round=buildPickRound(rows);}catch(e){roundError=e.message;}
   return <section><div className="inv-toolbar"><h2>{queue?'คิวหยิบของ':role==='admin'?'คำขอทั้งหมด':'คำขอของฉัน'}</h2>{!queue&&['staff','admin'].includes(role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'create'})}>ยื่นคำขอเบิก</button>}</div>
-    <div className="inv-filters"><label>ค้นหาออเดอร์ / รุ่น / ผู้ขอ<input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/></label>{!queue&&<label>สถานะ<select value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}}><option value="">ทั้งหมด</option>{Object.entries(WORKFLOW_LABELS).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>}</div>
+    {employee&&<nav className="inv-subnav" aria-label="คำขอของฉัน">{[['active','งานที่ยังไม่เสร็จ'],['history','ประวัติคำขอ']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>{setView(key);setPage(0);}}>{label}</button>)}</nav>}
+    {showDates&&<div className="inv-filters"><label>ค้นหาตาม<select value={dateBasis} onChange={e=>{setDateBasis(e.target.value);setPage(0);}}><option value="created">วันที่สร้างคำขอ</option><option value="issued">วันที่เบิกจริง</option></select></label><label>ตั้งแต่<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPage(0);}}/></label><label>ถึง<input type="date" value={to} onChange={e=>{setTo(e.target.value);setPage(0);}}/></label><button onClick={()=>{setFrom('');setTo('');setPage(0);}}>ล้างวันที่</button></div>}
+    {invalidPeriod&&<p role="alert">วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด</p>}
+    <div className="inv-filters"><label>ค้นหาออเดอร์ / รุ่น / ผู้ขอ<input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/></label>{!queue&&!employee&&<label>สถานะ<select value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}}><option value="">ทั้งหมด</option>{Object.entries(WORKFLOW_LABELS).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>}</div>
     <ReadState state={state}/>
-    {queue&&rows.length>0&&<details><summary>ยอดที่ต้องหยิบตามวัตถุดิบ ({rows.length} คำขอในตัวกรอง)</summary>{[...totals].map(([id,t])=><p key={id}>{t.name} · {t.qty} {t.unit}</p>)}<button disabled={actionBusy} onClick={()=>onAction({kind:'pick',rows})}>เลือกบรรทัดจากคิวนี้เพื่อหยิบพร้อมกัน</button><p>ไม่มีการเลือกให้อัตโนมัติ ต้องเลือกบรรทัดจริงก่อนยืนยัน</p></details>}
-    <div className="grid-list">{rows.slice(current*25,(current+1)*25).map(r=><article className="inv-card" key={r.id}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH')}</p><span className={'inv-status '+r.workflow_state}>{WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
-      {r.accounting_evidence==='unverified'&&<p>Completed/shipped by business attestation; historical stock deduction unverified. Original snapshot flags retained.</p>}<details><summary>รายละเอียดวัตถุดิบที่บันทึกไว้</summary>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</details>
-      {queue&&role==='admin'&&<button className="inv-primary" disabled={actionBusy} onClick={()=>onAction({kind:'pick',row:r})}>เลือกและยืนยันหยิบ</button>}
-      {!queue&&(cancelEligibility(r,role,userId)?<p className="inv-muted">{cancelEligibility(r,role,userId)}</p>:<button disabled={actionBusy} onClick={()=>onAction({kind:'cancel',row:r})}>{Number(r.picked_lines)>0?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'}</button>)}
+    {queue&&<><p>เลือกวัตถุดิบรวมจากทุกคำขอในตัวกรอง ไม่จำกัดเฉพาะหน้านี้ ({rows.length} คำขอ)</p>{roundError&&<p role="alert">{roundError}</p>}
+      <button className="inv-primary" disabled={role!=='admin'||actionBusy||state.busy||Boolean(state.error)||Boolean(roundError)||!round.length} onClick={()=>onAction({kind:'pick',rows})}>เลือกวัตถุดิบรวมเพื่อยืนยันหยิบ</button>
+      <div className="inv-pick-summary">{round.map(g=><details key={g.material_id}><summary>{g.name} · {g.qty} {g.unit} · {g.order_count} คำขอ</summary>{g.lines.map(l=><p key={`${l.transaction_id}:${l.line_id}`}>{l.order_ref} · {l.qty} {g.unit}</p>)}</details>)}</div></>}
+    <div className="grid-list">{rows.slice(current*25,(current+1)*25).map(r=><article className="inv-card" key={r.id}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><p>{r.staff_name} · วันที่สร้างคำขอ: {new Date(r.created_at).toLocaleString('th-TH')}</p><span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}{!queue&&<details><summary>วันที่เบิกจริง</summary>{(r.issue_times||[]).length?r.issue_times.map((at,i)=><p key={i}>{new Date(at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p>):<p>ไม่มีหลักฐานวันเบิกในบัญชี V2</p>}</details>}
+      {r.accounting_evidence==='unverified'&&<details><summary>ข้อมูลประวัติเดิม</summary><p>ยืนยันว่าผลิตและส่งแล้ว แต่หลักฐานการตัดสต๊อกเดิมยังไม่ยืนยัน เก็บข้อมูลเดิมไว้</p></details>}<details><summary>รายละเอียดวัตถุดิบที่บันทึกไว้</summary>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</details>
+      {!queue&&(!employee||view==='active')&&(cancelEligibility(r,role,userId)?<p className="inv-muted">{cancelEligibility(r,role,userId)}</p>:<button disabled={actionBusy} onClick={()=>onAction({kind:'cancel',row:r})}>{Number(r.picked_lines)>0?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'}</button>)}
       {!queue&&canCloseNotCompleted(r,role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'close_not_completed',row:r})}>ผลิตไม่สำเร็จ / คืนตามจริง</button>}
       {r.closure_kind==='production_not_completed'&&<div><p>ปิดงานแล้ว — ไม่รวมเป็นผลิตสำเร็จ</p>{(r.return_summary||[]).map(line=>{const b=r.bom_snapshot?.find(x=>x.line_id===line.line_id);return <p key={line.line_id}>{b?.material_name} · คืนจริง {line.returned_qty} · ใช้ไป/ไม่คืน {line.consumed_qty} {b?.unit}</p>;})}</div>}
     </article>)}</div>

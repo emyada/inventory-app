@@ -5,15 +5,25 @@ import { canManage, createManagementSubmission, isStaleStock, managementError } 
 import { managementCatalog } from '../lib/inventoryModelCatalog.js';
 
 export const managementLabels = {create_material:'เพิ่มวัตถุดิบ',update_material:'แก้ไขวัตถุดิบ',
-  set_material_active:'เปิด/ปิดวัตถุดิบ',receive_purchase:'รับของเข้า',stocktake:'ตรวจนับ',
+  set_material_active:'เปิด/ปิดวัตถุดิบ',receive_purchase:'รับของเข้า',receive_purchase_v21:'รับของเข้า',stocktake:'ตรวจนับ',
   save_model:'บันทึกรุ่นและ BOM',set_model_active:'เปิด/ปิดรุ่น'};
+export function ReceiptFields({values,change}) { return <>
+        <label>จำนวนรับเข้า *<input required inputMode="decimal" value={values.quantity} onChange={e=>change('quantity',e.target.value)}/></label>
+        <label>ผู้ขาย / แหล่งที่ซื้อ<input maxLength={500} value={values.supplier_source} onChange={e=>change('supplier_source',e.target.value)}/></label>
+        <label>ประเภทเอกสาร<select value={values.document_type} onChange={e=>change('document_type',e.target.value)}><option value="none">ไม่มีเอกสาร</option><option value="po">PO</option><option value="invoice">Invoice</option><option value="both">PO + Invoice</option></select></label>
+        {['po','both'].includes(values.document_type)&&<label>เลข PO<input required maxLength={200} value={values.po_number} onChange={e=>change('po_number',e.target.value)}/></label>}
+        {['invoice','both'].includes(values.document_type)&&<label>เลข Invoice<input required maxLength={200} value={values.invoice_number} onChange={e=>change('invoice_number',e.target.value)}/></label>}
+        <label>หมายเหตุ<textarea value={values.note} onChange={e=>change('note',e.target.value)}/></label>
+        <p>เลขรับเข้า: ระบบจะออกเลขเมื่อบันทึก</p>
+      </>; }
 function OperationStatus({operation}) {
   const state=useInventoryOperation(operation);
   return <div aria-live="polite">
     {state.loading && <p>กำลังส่งรายการ…</p>}
     {state.status==='succeeded' && <><p>บันทึกสำเร็จแล้ว</p>
+      {state.data?.reference && <p role="status">เลขรับเข้า: <strong>{state.data.reference}</strong> {state.data.material_name} · {state.data.quantity} {state.data.unit}</p>}
       {state.data?.pending_request_count!==undefined && <p role="status">คำเตือน: รุ่นนี้มีงานค้าง {state.data.pending_request_count} งาน งานเดิมดำเนินต่อ/ยกเลิกได้ตามสิทธิ์เดิม</p>}
-      {state.data?.qty_before!==undefined && <p>ผลจากระบบ: ก่อน {state.data.qty_before} → หลัง {state.data.qty_after} · ส่วนต่าง {state.data.delta}</p>}</>}
+      {state.data?.qty_before!==undefined && <p>ผลจากระบบ: ก่อน {state.data.qty_before} → หลัง {state.data.qty_after} · ส่วนต่าง {state.data.delta ?? state.data.quantity}</p>}</>}
     {state.error && <><p role="alert">{managementError(state.error)}</p><details><summary>รายละเอียดสำหรับตรวจสอบ</summary><pre>{JSON.stringify({code:state.error.code,message:state.error.message,details:state.error.details,hint:state.error.hint},null,2)}</pre></details></>}
     {state.storageError && <p role="alert">{state.storageError.message}</p>}
   </div>;
@@ -22,7 +32,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
   const kind=task.kind; const [row,setRow]=useState(task.row);
   const [values,setValues]=useState({name:task.row?.name||'',unit:task.row?.unit||'',initial_qty:'0',
     low_stock_threshold:String(task.row?.low_stock_threshold??0),requires_picking:task.row?.requires_picking??true,
-    is_active:!task.row?.is_active,reason:'',quantity:'',reference:'',note:'',counted_qty:'',
+    is_active:!task.row?.is_active,reason:'',quantity:'',reference:'',note:'',counted_qty:'',supplier_source:'',document_type:'none',po_number:'',invoice_number:'',
     category:task.row?.category||task.category||'CIEM',bom:[]});
   const [materials,setMaterials]=useState([]);const [loading,setLoading]=useState(true);
   const [loadError,setLoadError]=useState(null);const [reload,setReload]=useState(0);
@@ -75,13 +85,14 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
     {confirmation&&<div className="inv-confirm" role="alertdialog" aria-label="ยืนยันการบันทึก"><p>{confirmation}</p><button type="button" onClick={()=>answer(false)}>กลับไปแก้ไข</button><button type="button" className="inv-primary" onClick={()=>answer(true)}>ยืนยันบันทึก</button></div>}
     {loading && <p role="status">กำลังโหลดข้อมูลล่าสุด…</p>}
     {loadError && <><p role="alert">{managementError(loadError)}</p><button disabled={loading} onClick={()=>setReload(n=>n+1)}>โหลดใหม่</button></>}
-    <form onSubmit={submit}><fieldset disabled={locked}>
+    <form className="inv-form" onSubmit={submit}><fieldset disabled={locked}>
       {['create_material','update_material','save_model'].includes(kind) && <label>ชื่อ<input required value={values.name} onChange={e=>change('name',e.target.value)}/></label>}
       {kind==='create_material' && <><label>หน่วย<input required value={values.unit} onChange={e=>change('unit',e.target.value)}/></label>
         <label>จำนวนตั้งต้น<input required inputMode="decimal" value={values.initial_qty} onChange={e=>change('initial_qty',e.target.value)}/></label></>}
       {kind==='update_material' && <p>หน่วยเดิม: {row?.unit} (เปลี่ยนไม่ได้) · ยอดคงเหลือ {row?.qty}</p>}
       {['create_material','update_material'].includes(kind) && <><label>จุดเตือน<input required inputMode="decimal" value={values.low_stock_threshold} onChange={e=>change('low_stock_threshold',e.target.value)}/></label>
         <label>วิธีเบิกใช้<select value={String(values.requires_picking)} onChange={e=>change('requires_picking',e.target.value==='true')}><option value="true">ต้องหยิบ/ยืนยันโดยหัวหน้า</option><option value="false">ตัดใช้ตาม BOM อัตโนมัติ</option></select></label><p>ใช้กับคำขอใหม่เท่านั้น ไม่แก้ BOM Snapshot ของคำขอเดิม รายการอัตโนมัติตัดเมื่อหยิบด้วยมือครบ หากทั้งงานเป็นอัตโนมัติจะตัดตอนสร้างคำขอ</p></>}
+      {kind==='receive_purchase_v21' && <ReceiptFields values={values} change={change}/>}
       {kind==='receive_purchase' && <><label>จำนวนรับเข้า<input required inputMode="decimal" value={values.quantity} onChange={e=>change('quantity',e.target.value)}/></label>
         <label>เอกสารอ้างอิง<input value={values.reference} onChange={e=>change('reference',e.target.value)}/></label>
         <label>หมายเหตุ<textarea value={values.note} onChange={e=>change('note',e.target.value)}/></label></>}

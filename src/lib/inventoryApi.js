@@ -8,6 +8,7 @@ export const mutationParameters = Object.freeze({
   update_material: 'material_id name unit low_stock_threshold requires_picking',
   set_material_active: 'material_id is_active reason',
   receive_purchase: 'material_id quantity reference note',
+  receive_purchase_v21: 'material_id quantity supplier_source document_type po_number invoice_number note',
   stocktake: 'material_id counted_qty reason expected_version',
   create_request: 'model_id order_ref repair_spec',
   confirm_pick: 'items',
@@ -19,6 +20,7 @@ export const mutationParameters = Object.freeze({
 });
 export const readParameters = Object.freeze({
   get_operation_result: 'operation_id',
+  purchase_category_usage_report: 'date_from date_to after_sequence cutoff_sequence limit',
   list_finished_stock: '',
   finished_balance_report: 'date_from date_to timezone',
   list_materials: 'include_inactive',
