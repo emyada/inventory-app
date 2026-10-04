@@ -14,3 +14,8 @@ export function createUserInventory(userId) {
     return data.session?.user?.id;
   } });
 }
+
+import {createOpeningApi} from './inventoryOpening.js';
+export function createUserOpening(userId){
+ return createOpeningApi(supabase,{userId,projectRef:inventoryEnvironment.projectRef,assertAccess:controls.assertAccess,currentUserId:async()=>{const {data,error}=await supabase.auth.getSession();if(error)throw error;return data.session?.user?.id;}});
+}

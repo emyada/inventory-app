@@ -153,3 +153,5 @@
 .inventory-v2 .inv-chip-entry {display:flex;gap:8px;align-items:center;}
 .inventory-v2 .inv-chip-entry input {flex:1;min-width:0;}
 .inventory-v2 .inv-pick-summary details {padding:10px;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;}
+
+.inv-opening-table{overflow-x:auto;margin:1rem 0}.inv-opening table{width:100%;border-collapse:collapse}.inv-opening th,.inv-opening td{padding:.6rem;text-align:left;border-bottom:1px solid #dbe2ea}.inv-opening td input{width:9rem;max-width:100%}.inv-opening [role="group"],.inv-opening aside{padding:1rem;margin:1rem 0;border:1px solid #cbd5e1;border-radius:.75rem}.inv-opening label{display:inline-flex;gap:.5rem;align-items:center;flex-wrap:wrap}@media(max-width:600px){.inv-opening th,.inv-opening td{padding:.4rem;font-size:.85rem}.inv-opening td input{width:6rem}}
