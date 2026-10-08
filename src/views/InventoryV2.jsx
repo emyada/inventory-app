@@ -34,7 +34,7 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
     <InventoryModeBanner policy={inventoryEnvironment}/>
     {setupError&&<p role="alert">{setupError}</p>}
     {setup&&!setup.active&&<aside className="inv-environment">คลังยังไม่เปิดใช้งาน — รอการตรวจนับยอดตั้งต้นและอนุมัติเปิดใช้งาน</aside>}
-    {role==='admin'&&<div className="inv-actions"><button disabled={Boolean(task)||setupBusy} onClick={()=>setTab(tab==='opening'?tabs[0]:'opening')}>{tab==='opening'?'กลับหน้าคลัง':'ยอดตั้งต้น / เปิดใช้งาน'}</button></div>}
+    {role==='admin'&&setup&&!setup.active&&<div className="inv-actions"><button disabled={Boolean(task)||setupBusy} onClick={()=>setTab(tab==='opening'?tabs[0]:'opening')}>{tab==='opening'?'กลับหน้าคลัง':'ยอดตั้งต้น / เปิดใช้งาน'}</button></div>}
     {inventoryEnvironment.environmentName==='staging'&&mutationsEnabled&&<aside className="inv-environment">STAGING — สภาพแวดล้อมทดสอบ</aside>}
     <div className="inv-content">
       {recovery&&!task&&<InventoryRecoveryPanel mutationsEnabled={mutationsEnabled} recovery={recovery} onCompleted={refresh} onBlocked={setRecoveryBlocked}/>}

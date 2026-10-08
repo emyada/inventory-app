@@ -155,3 +155,44 @@
 .inventory-v2 .inv-pick-summary details {padding:10px;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;}
 
 .inv-opening-table{overflow-x:auto;margin:1rem 0}.inv-opening table{width:100%;border-collapse:collapse}.inv-opening th,.inv-opening td{padding:.6rem;text-align:left;border-bottom:1px solid #dbe2ea}.inv-opening td input{width:9rem;max-width:100%}.inv-opening [role="group"],.inv-opening aside{padding:1rem;margin:1rem 0;border:1px solid #cbd5e1;border-radius:.75rem}.inv-opening label{display:inline-flex;gap:.5rem;align-items:center;flex-wrap:wrap}@media(max-width:600px){.inv-opening th,.inv-opening td{padding:.4rem;font-size:.85rem}.inv-opening td input{width:6rem}}
+
+/* Compact UI pass: presentation only, shared action and disclosure patterns. */
+.inventory-v2 button,.inventory-v2 summary {touch-action:manipulation;}
+.inventory-v2 input,.inventory-v2 select,.inventory-v2 textarea {font-size:16px;}
+.inventory-v2 .inv-card {position:relative;padding:14px;}
+.inventory-v2 .inv-card>h3 {padding-right:36px;}
+.inventory-v2 .inv-card>p {margin:6px 0;}
+.inventory-v2 .inv-card>.inv-overflow {position:absolute;right:8px;top:8px;}
+.inventory-v2 .inv-modal-header {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;}
+.inventory-v2 .inv-modal-header h2 {margin:0;flex:1;}
+.inventory-v2 .inv-icon {display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:8px;margin:0;background:transparent;}
+.inventory-v2 .inv-model-summary {display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;background:var(--inv-panel-alt);border-radius:8px;padding:12px;margin-bottom:16px;}
+.inventory-v2 .inv-model-summary span {color:var(--inv-muted);}
+.inventory-v2 .inv-overflow {display:inline-block;position:relative;margin:0;padding:0;background:transparent;}
+.inventory-v2 .inv-overflow>summary {display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;list-style:none;}
+.inventory-v2 .inv-overflow>summary::-webkit-details-marker {display:none;}
+.inventory-v2 .inv-overflow[open]>summary {background:var(--inv-panel-alt);color:var(--inv-accent);}
+.inventory-v2 .inv-overflow-body {position:absolute;right:0;top:100%;z-index:5;width:220px;max-width:75vw;padding:8px;border:1px solid var(--inv-line);border-radius:10px;background:var(--inv-panel-alt);box-shadow:0 8px 24px #0008;}
+.inventory-v2 .inv-overflow-body button {display:block;width:100%;margin:0;min-height:44px;text-align:left;background:transparent;border:0;}
+.inventory-v2 .inv-bom-entry {display:grid;grid-template-columns:minmax(0,1fr) 100px 44px;gap:8px;align-items:end;}
+.inventory-v2 .inv-bom-entry label {margin:0;}
+.inventory-v2 .inv-bom-rows {list-style:none;margin:12px 0;padding:0;}
+.inventory-v2 .inv-bom-rows li {display:grid;grid-template-columns:minmax(0,1fr) 90px 44px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--inv-line);}
+.inventory-v2 .inv-bom-rows small {display:block;color:var(--inv-muted);}
+.inventory-v2 .inv-low-summary>summary {color:var(--inv-accent);}
+.inventory-v2 .inv-low-summary ul {list-style:none;padding:0;max-height:240px;overflow:auto;}
+.inventory-v2 .inv-low-summary li {display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--inv-line);}
+.inventory-v2 .inv-low-summary strong {white-space:nowrap;}
+.inventory-v2 .inv-status.partially_picked {color:var(--inv-accent);}
+.inventory-v2 .inv-status.pending {color:#9dbbe6;}
+.inventory-v2 .inv-status.production_not_completed {color:#e0a48c;}
+.inventory-v2 .inv-pick-summary details {border-color:var(--inv-line);}
+.inventory-v2 .inv-modal {scrollbar-gutter:stable;}
+@media(max-width:600px){
+ .inventory-v2 .grid-list {grid-template-columns:minmax(0,1fr);}
+ .inventory-v2 .inv-bom-entry {grid-template-columns:minmax(0,1fr) 78px 44px;}
+ .inventory-v2 .inv-bom-rows li {grid-template-columns:minmax(0,1fr) 78px 44px;}
+ .inventory-v2 .inv-modal-backdrop {padding-top:env(safe-area-inset-top);}
+ .inventory-v2 .inv-modal {max-height:92dvh;}
+ .inventory-v2 .inv-content {padding-bottom:20px;}
+}

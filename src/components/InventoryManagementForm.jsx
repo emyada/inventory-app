@@ -1,3 +1,4 @@
+import {ModalHeader,BomEditor} from './InventoryUI.jsx';
 import { isDefinitiveFailure } from '../lib/inventoryFailure.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useInventoryOperation } from '../hooks/useInventoryOperation.js';
@@ -80,8 +81,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
   }
   const locked=loading||busy||Boolean(operation)||Boolean(loadError)||!canManage(role,kind);
   return <section aria-label={managementLabels[kind]} style={{border:'2px solid #888',padding:16,marginTop:12}}>
-    <h2>{managementLabels[kind]} {row?.name}</h2>
-    {kind==='save_model'&&values.category==='Universal'&&<p className="inv-notice">เตรียมรุ่นและ BOM เท่านั้น งานแพ็ก/ยอดสินค้าสำเร็จรูปยังไม่เปิดใช้ จนกว่าจะมีบัญชีเข้าออกที่ตรวจสอบได้</p>}
+    <ModalHeader title={managementLabels[kind]} onClose={onClose} busy={busy}/>{row?.name&&<p className="inv-model-summary">{row.name}</p>}
     {confirmation&&<div className="inv-confirm" role="alertdialog" aria-label="ยืนยันการบันทึก"><p>{confirmation}</p><button type="button" onClick={()=>answer(false)}>กลับไปแก้ไข</button><button type="button" className="inv-primary" onClick={()=>answer(true)}>ยืนยันบันทึก</button></div>}
     {loading && <p role="status">กำลังโหลดข้อมูลล่าสุด…</p>}
     {loadError && <><p role="alert">{managementError(loadError)}</p><button disabled={loading} onClick={()=>setReload(n=>n+1)}>โหลดใหม่</button></>}
@@ -91,7 +91,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
         <label>จำนวนตั้งต้น<input required inputMode="decimal" value={values.initial_qty} onChange={e=>change('initial_qty',e.target.value)}/></label></>}
       {kind==='update_material' && <p>หน่วยเดิม: {row?.unit} (เปลี่ยนไม่ได้) · ยอดคงเหลือ {row?.qty}</p>}
       {['create_material','update_material'].includes(kind) && <><label>จุดเตือน<input required inputMode="decimal" value={values.low_stock_threshold} onChange={e=>change('low_stock_threshold',e.target.value)}/></label>
-        <label>วิธีเบิกใช้<select value={String(values.requires_picking)} onChange={e=>change('requires_picking',e.target.value==='true')}><option value="true">ต้องหยิบ/ยืนยันโดยหัวหน้า</option><option value="false">ตัดใช้ตาม BOM อัตโนมัติ</option></select></label><p>ใช้กับคำขอใหม่เท่านั้น ไม่แก้ BOM Snapshot ของคำขอเดิม รายการอัตโนมัติตัดเมื่อหยิบด้วยมือครบ หากทั้งงานเป็นอัตโนมัติจะตัดตอนสร้างคำขอ</p></>}
+        <label>วิธีเบิกใช้<select value={String(values.requires_picking)} onChange={e=>change('requires_picking',e.target.value==='true')}><option value="true">ต้องหยิบ/ยืนยันโดยหัวหน้า</option><option value="false">ตัดใช้ตาม BOM อัตโนมัติ</option></select></label><details><summary>การตัดใช้</summary><p>ใช้กับคำขอใหม่เท่านั้น ไม่แก้ BOM Snapshot ของคำขอเดิม รายการอัตโนมัติตัดเมื่อหยิบด้วยมือครบ หากทั้งงานเป็นอัตโนมัติจะตัดตอนสร้างคำขอ</p></details></>}
       {kind==='receive_purchase_v21' && <ReceiptFields values={values} change={change}/>}
       {kind==='receive_purchase' && <><label>จำนวนรับเข้า<input required inputMode="decimal" value={values.quantity} onChange={e=>change('quantity',e.target.value)}/></label>
         <label>เอกสารอ้างอิง<input value={values.reference} onChange={e=>change('reference',e.target.value)}/></label>
@@ -103,19 +103,15 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
       {['create_material','stocktake','set_material_active','set_model_active'].includes(kind) && <label>เหตุผล<textarea value={values.reason} onChange={e=>change('reason',e.target.value)}/></label>}
       {kind==='save_model' && <><label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
         {[...new Set(['CIEM','Lifestyle','Sleepplug','Tactical','Universal',values.category])].filter(Boolean).map(c=><option key={c}>{c}</option>)}</select></label>
-        <p>แก้ BOM สำหรับคำขอใหม่เท่านั้น สถานะเปิด/ปิดรุ่นไม่เปลี่ยน</p>
-        {values.bom.map((b,i)=><div key={i}><label>วัตถุดิบ<select required value={b.material_id} onChange={e=>change('bom',values.bom.map((x,j)=>i===j?{...x,material_id:e.target.value}:x))}>
-          <option value="">เลือกวัตถุดิบ</option>{materials.filter(m=>m.is_active||m.id===b.material_id).map(m=><option key={m.id} value={m.id} disabled={!m.is_active}>{m.name} ({m.unit}){!m.is_active?' — ปิดใช้งาน':''}</option>)}</select></label>
-          <label>จำนวน<input required inputMode="decimal" value={b.qty} onChange={e=>change('bom',values.bom.map((x,j)=>i===j?{...x,qty:e.target.value}:x))}/></label>
-          <button type="button" onClick={()=>change('bom',values.bom.filter((_,j)=>i!==j))}>เอาบรรทัดนี้ออกจาก BOM ที่กำลังแก้</button></div>)}
-        <button type="button" onClick={()=>change('bom',[...values.bom,{material_id:'',qty:'1'}])}>เพิ่มบรรทัด BOM</button></>}
-      <button type="submit">ตรวจและบันทึก</button>
+        <BomEditor materials={materials} rows={values.bom} onChange={bom=>change('bom',bom)}/>
+        <details><summary>ผลต่อคำขอเดิม</summary><p>แก้ BOM สำหรับคำขอใหม่เท่านั้น สถานะเปิด/ปิดรุ่นไม่เปลี่ยน</p></details></>}
+      <button type="submit">บันทึก</button>
     </fieldset></form>
     {busy && <p role="status">กำลังตรวจ/ส่งรายการ…</p>}
     {error && <p role="alert">{managementError(error)}{error.reloadError && ' · โหลดข้อมูลล่าสุดไม่สำเร็จ'}</p>}
     {isStaleStock(error) && <p>โหลดข้อมูลล่าสุด: {row?.qty} {row?.unit} กรุณาทบทวนการนับก่อนทำรายการต่อ</p>}
     {operation && <OperationStatus operation={operation}/>}
     {operation && !done && !busy && <p>ยังยืนยันผลไม่ได้ กรุณากลับไปตรวจสอบรายการค้างก่อนส่งซ้ำ</p>}
-    <button disabled={busy} onClick={onClose}>{operation&&!done?'เปิดกู้รายการค้าง':done?'ปิดรายการที่สำเร็จแล้ว':'ปิดแบบฟอร์ม'}</button>
+    {operation&&!done&&!busy&&<button onClick={onClose}>ตรวจสอบรายการค้าง</button>}
   </section>;
 }

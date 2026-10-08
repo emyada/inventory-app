@@ -1,3 +1,4 @@
+import {ModalHeader} from './InventoryUI.jsx';
 import React,{useRef,useState,useEffect} from 'react';
 import {useInventoryOperation} from '../hooks/useInventoryOperation.js';
 import {physicalReturnDefaults,prepareExtension} from '../lib/inventoryExtensions.js';
@@ -17,7 +18,7 @@ export function InventoryExtensionForm({task,api,role,onClose,onSuccess}) {
   const op=prepareExtension(api,task.kind,{reason,returns,reference,note:reason},{role,row:task.row});
   flight.current=op;setOperation(op);setError(null);setSending(true);op.execute().catch(()=>{}).finally(()=>setSending(false));
  }catch(e){setError(e.message);}}
- return <section className="inv-form"><h2>{closing?'ผลิตไม่สำเร็จ / คืนตามจริง':'นำสินค้าสำเร็จรูปออก'}</h2><p>{task.row.model_name} {task.row.order_ref}</p>
+ return <section className="inv-form"><ModalHeader title={closing?'ผลิตไม่สำเร็จ / คืนตามจริง':'นำสินค้าสำเร็จรูปออก'} onClose={onClose} busy={sending}/><p>{task.row.model_name} {task.row.order_ref}</p>
  {initial.error&&<p role="alert">{initial.error}</p>}
  <form onSubmit={submit}><fieldset disabled={Boolean(operation)||Boolean(initial.error)||role!=='admin'}>
  {closing?<><p>ตรวจจำนวนที่คืนจริง ส่วนที่ไม่คืนยังนับเป็นใช้ไปแล้ว เมื่อยืนยันจะปิดงานและไม่รวมเป็นผลิตสำเร็จ</p>{returns.map(r=><label key={r.line_id}>{r.name} (คืนได้ {r.max} {r.unit})<input required type="number" min="0" max={r.max} step="any" value={r.quantity} onChange={e=>setReturns(rows=>rows.map(x=>x.line_id===r.line_id?{...x,quantity:e.target.value}:x))}/></label>)}</>:<><p>นำออก 1 ชิ้นจากงานแพ็กที่เลือก ไม่ใช่รายการขาย</p><label>อ้างอิง<input required value={reference} onChange={e=>setReference(e.target.value)}/></label></>}
@@ -25,5 +26,5 @@ export function InventoryExtensionForm({task,api,role,onClose,onSuccess}) {
  <label><input required type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>{closing?'ตรวจยอดคืนจริงและยืนยันปิดงาน':'ยืนยันนำสินค้าสำเร็จรูปออก 1 ชิ้น'}</label><button className="inv-primary" type="submit">ยืนยัน</button>
  </fieldset></form>{error&&<p role="alert">{error}</p>}
  {operation&&<Result operation={operation} onFailure={e=>{flight.current=null;setOperation(null);setError(workflowError(e));}} onSuccess={()=>{setDone(true);onSuccess();}}/>}
- <button disabled={sending} onClick={onClose}>{done?'กลับรายการ':operation?'กลับไปตรวจสอบรายการ':'ปิด'}</button></section>;
+ {operation&&!done&&!sending&&<button onClick={onClose}>ตรวจสอบรายการค้าง</button>}</section>;
 }

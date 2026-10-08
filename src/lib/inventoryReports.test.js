@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sumAmounts,negative,requestRows,requirementRows,modelSummary,allocationRows,materialActivity,balanceMismatches,loadAllRequests,loadAllMovements,loadReportData,reportCSV,returnableMaterials,workspaceTabs,PRODUCT_CATEGORIES} from './inventoryReports.js';
+import {assertCategoryReconciliation,loadCategoryUsage,movementRows,sumAmounts,negative,requestRows,requirementRows,modelSummary,allocationRows,materialActivity,balanceMismatches,loadAllRequests,loadAllMovements,loadReportData,reportCSV,returnableMaterials,workspaceTabs,PRODUCT_CATEGORIES} from './inventoryReports.js';
 import {prepareWorkflow,cancelEligibility} from './inventoryWorkflow.js';
 const from='2026-09-01',to='2026-09-30';
 const request={id:'r1',model_id:'model',model_name:'Historical one-side',category:'CIEM',order_ref:'ORDER',created_at:'2026-09-01T00:00:00Z',workflow_state:'completed',bom_snapshot:[{line_id:'line',material_id:'mat',material_name:'Liquid',unit:'ml',qty:'0.5',requires_picking:false,picked:true}]};
@@ -45,7 +45,7 @@ test('request export loads every page and rejects duplicate pages',async()=>{
  await assert.rejects(loadAllRequests({list_my_requests:async()=>batch}));
 });
 test('purchasing report never requests the admin/staff request RPC',async()=>{
- let calls=0;const api={list_my_requests:()=>assert.fail('forbidden read'),list_movements:async()=>{calls++;return {rows:[],cutoff_sequence:0};},balance_report:async()=>({materials:[]})};
+ let calls=0;const api={list_my_requests:()=>assert.fail('forbidden read'),list_movements:async()=>{calls++;return {rows:[],cutoff_sequence:0};},purchase_category_usage_report:async()=>({rows:[],cutoff_sequence:0,next_sequence:0,has_more:false}),balance_report:async()=>({materials:[]})};
  assert.deepEqual((await loadReportData(api,'purchasing',from,to)).requests,[]);assert.equal(calls,1);
  await assert.rejects(loadReportData(api,'staff',from,to));assert.equal(calls,1);
 });
@@ -55,7 +55,10 @@ test('CSV preserves historical model IDs, all rows, decimal values and blocks fo
 });
 test('workspace visibility and Universal metadata do not imply a finished-stock workflow',()=>{
  assert.deepEqual(workspaceTabs('staff'),['floor','requests']);assert.deepEqual(workspaceTabs('purchasing'),['materials','report']);assert.deepEqual(workspaceTabs('unknown'),[]);assert.ok(PRODUCT_CATEGORIES.includes('Universal'));
- const ui=readFileSync('src/components/InventoryWorkspacePanels.jsx','utf8');assert.ok(ui.includes("m.category==='Universal'"));
+ const ui=readFileSync('src/components/InventoryWorkspacePanels.jsx','utf8');assert.ok(ui.includes("...PRODUCT_CATEGORIES"));
+ const shell=readFileSync('src/views/InventoryV2.jsx','utf8');const reports=readFileSync('src/components/InventoryReports.jsx','utf8');
+ assert.doesNotMatch(shell,/InventoryFinishedStock|issue_finished/);assert.doesNotMatch(reports,/InventoryFinishedReport/);
+ assert.ok(ui.includes("onAction({kind:'create',model:m})"));
 });
 test('grouped pick submits UUID pairs only and cancellation/order reuse is left to server',()=>{
  let payload;const api={confirm_pick:p=>{payload=p;return {};},create_request:p=>p};
@@ -68,4 +71,42 @@ test('new report and workspace cannot write inventory directly or use editable B
  const text=readFileSync(path,'utf8');assert.doesNotMatch(text,/\.(insert|update|delete|upsert|rpc)\(/);
  }
  assert.doesNotMatch(readFileSync('src/components/InventoryReports.jsx','utf8'),/loadBom|model_bom/);
+});
+
+test('receipt metadata exports separately without changing historical receipt values',()=>{
+ const old={...movement('manual','purchase','20',false),reference:'RCV-20260930-001',note:'original'};
+ const documented={...old,id:'documented',reference:'RCV-20261001-1000',receipt_document:{supplier_source:'Shop',document_type:'both',po_number:'P1',invoice_number:'I1'}};
+ const rows=movementRows([old,documented],'2026-09-01','2026-10-02');
+ assert.equal(rows[0].reference,old.reference);assert.equal(rows[0].note,'original');assert.equal(rows[0].supplier_source,'');
+ assert.equal(rows[1].po_number,'P1');assert.equal(rows[1].invoice_number,'I1');assert.equal(rows[1].delta,'20');
+ const csv=reportCSV(rows,[['reference','RCV'],['supplier_source','Source'],['po_number','PO'],['invoice_number','Invoice']],{});
+ assert.ok(csv.includes('P1'));assert.ok(csv.includes('RCV-20260930-001'));
+});
+
+test('Purchasing category pages share cutoff and allow several category rows at one sequence',async()=>{
+ const a={sequence_no:2,category:'CIEM',model_id:'m',model_name:'Old name',material_id:'mat',reason:'production_issue',allocated_delta:'-2'};
+ const calls=[];const api={purchase_category_usage_report:async p=>{calls.push(p);return calls.length===1?{rows:[a,{...a,category:'Sleepplug'}],cutoff_sequence:9,next_sequence:2,has_more:true}:{rows:[],cutoff_sequence:9,next_sequence:9,has_more:false};}};
+ assert.equal((await loadCategoryUsage(api,from,to,9)).length,2);assert.equal(calls[1].after_sequence,2);assert.equal(calls[1].cutoff_sequence,9);
+ await assert.rejects(loadCategoryUsage({purchase_category_usage_report:async()=>({rows:[],cutoff_sequence:10,next_sequence:0,has_more:false})},from,to,9));
+ await assert.rejects(loadCategoryUsage({purchase_category_usage_report:async()=>({rows:[],cutoff_sequence:9,next_sequence:0,has_more:true})},from,to,9));
+ await assert.rejects(loadCategoryUsage({purchase_category_usage_report:async()=>({rows:[a,a],cutoff_sequence:9,next_sequence:2,has_more:false})},from,to,9));
+});
+
+test('category projection reconciliation fails closed on missing, duplicated or foreign effects',()=>{
+ const m={...movement('issue','production_issue','-3'),sequence_no:1,allocations:[{delta:'-2'},{delta:'-1'}]};
+ const rows=[{sequence_no:1,allocated_delta:'-2'},{sequence_no:1,allocated_delta:'-1'}];
+ assert.doesNotThrow(()=>assertCategoryReconciliation([m],rows,from,to));
+ assert.throws(()=>assertCategoryReconciliation([m],rows.slice(0,1),from,to));
+ assert.throws(()=>assertCategoryReconciliation([m],[...rows,rows[0]],from,to));
+ assert.throws(()=>assertCategoryReconciliation([m],[{sequence_no:2,allocated_delta:'-3'}],from,to));
+});
+
+test('accepted V21 receipt survives normal history and Sheets CSV projection with metadata and Bangkok date',()=>{
+ const movement={id:'9347327b-92bb-44ad-9739-217fc8552db1',operation_id:'e64ac16a-24a4-44de-9c1c-66955246dcb4',reference:'RCV-20261003-001',occurred_at:'2026-10-02T23:32:52.247995Z',reason:'purchase',delta:'0.25',qty_before:'2.75',qty_after:'3.00',version_before:5,version_after:6,actor_id:'a514aabb-f7b0-4fd8-81d7-74ce99bddf4a',note:'TEST-ONLY Receiving V2.1 Final UAT',receipt_document:{supplier_source:'TEST-ONLY Staging UAT',document_type:'none',po_number:null,invoice_number:null}};
+ const rows=movementRows([movement],'2026-10-03','2026-10-03');assert.equal(rows.length,1);
+ assert.equal(rows[0].document_type,'none');assert.equal(rows[0].supplier_source,'TEST-ONLY Staging UAT');
+ assert.equal(rows[0].po_number,'');assert.equal(rows[0].invoice_number,'');assert.equal(rows[0].actor_id,movement.actor_id);
+ assert.equal(movementRows([movement],'2026-10-02','2026-10-02').length,0);
+ const csv=reportCSV(rows,[['reference','RCV'],['supplier_source','Source'],['document_type','Document'],['note','Note'],['delta','Quantity']],{timezone:'Asia/Bangkok'});
+ assert.ok(csv.includes('RCV-20261003-001'));assert.ok(csv.includes('TEST-ONLY Receiving V2.1 Final UAT'));assert.ok(csv.includes('"0.25"'));
 });
