@@ -8,6 +8,7 @@ import {manualPendingLines} from '../lib/inventoryV2Reads.js';
 import {canCloseNotCompleted} from '../lib/inventoryExtensions.js';
 import {filterRequests,employeeStatus} from '../lib/inventoryRequestUX.js';
 import {cancelEligibility} from '../lib/inventoryWorkflow.js';
+import {pendingWorkerGroups, UNASSIGNED_WORKER} from '../lib/inventoryRequestPresentation.js';
 function useRead(load,revision) {
   const [state,setState]=useState({busy:true,error:null,rows:[]});
   useEffect(()=>{let alive=true;setState({busy:true,error:null,rows:[]});load().then(rows=>{if(alive)setState({busy:false,error:null,rows});}).catch(e=>{if(alive)setState({busy:false,error:e.message,rows:[]});});return()=>{alive=false;};},[load,revision]);
@@ -54,10 +55,14 @@ export function SupervisorRequests(props) {
 export function RequestsPanel({api,role,userId,queue=false,revision,onAction,actionBusy}) {
   const state=useRead(useCallback(()=>queue?queueRows(api):loadAllRequests(api),[api,queue]),revision);const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [page,setPage]=useState(0);
   const [dateBasis,setDateBasis]=useState('created');const [view,setView]=useState('active');const [from,setFrom]=useState('');const [to,setTo]=useState('');
+  const [worker,setWorker]=useState('');
   const employee=role==='staff'&&!queue;const showDates=!queue&&(!employee||view==='history');
   const invalidPeriod=showDates&&from&&to&&from>to;
   const rows=invalidPeriod?[]:filterRequests(state.rows,{view:employee?view:'all',search,status:employee?'':status,from:showDates?from:'',to:showDates?to:'',dateBasis});
-  const last=Math.max(0,Math.ceil(rows.length/25)-1);const current=Math.min(page,last);
+  const workerGroups=queue?pendingWorkerGroups(state.rows):[];
+  const pendingCount=workerGroups.reduce((total,group)=>total+group.rows.length,0);
+  const displayRows=queue&&worker===UNASSIGNED_WORKER?pendingWorkerGroups(rows).flatMap(group=>group.rows):rows;
+  const last=Math.max(0,Math.ceil(displayRows.length/25)-1);const current=Math.min(page,last);
   let round=[],roundError='';if(queue)try{round=buildPickRound(rows);}catch(e){roundError=e.message;}
   return <section><div className="inv-toolbar"><h2>{queue?'คิวหยิบของ':role==='admin'?'คำขอทั้งหมด':'คำขอของฉัน'}</h2>{!queue&&['staff','admin'].includes(role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'create'})}>ยื่นคำขอเบิก</button>}</div>
     {employee&&<nav className="inv-subnav" aria-label="คำขอของฉัน">{[['active','งานที่ยังไม่เสร็จ'],['history','ประวัติคำขอ']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>{setView(key);setPage(0);}}>{label}</button>)}</nav>}
@@ -65,19 +70,40 @@ export function RequestsPanel({api,role,userId,queue=false,revision,onAction,act
     {invalidPeriod&&<p role="alert">วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด</p>}
     <div className="inv-filters"><label>ค้นหาออเดอร์ / รุ่น / ผู้ขอ<input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/></label>{!queue&&!employee&&<label>สถานะ<select value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}}><option value="">ทั้งหมด</option>{Object.entries(WORKFLOW_LABELS).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>}</div>
     <ReadState state={state}/>
+    {queue&&<nav className="inv-worker-filters" aria-label="กรองตามช่างผู้รับผิดชอบ"><button type="button" aria-pressed={!worker} onClick={()=>{setWorker('');setPage(0);}}>ทั้งหมด <span>{pendingCount}</span></button>{workerGroups.map(group=><button type="button" key={group.key} aria-pressed={worker===group.key} onClick={()=>{setWorker(group.key);setPage(0);}}>{group.name} <span>{group.rows.length}</span></button>)}</nav>}
     {queue&&<><p className="inv-muted">{rows.length} คำขอ · {round.length} วัตถุดิบ</p>{roundError&&<p role="alert">{roundError}</p>}
       <button className="inv-primary" disabled={role!=='admin'||actionBusy||state.busy||Boolean(state.error)||Boolean(roundError)||!round.length} onClick={()=>onAction({kind:'pick',rows})}>เลือกรอบหยิบ</button>
       <div className="inv-pick-summary">{round.map(g=><details key={g.material_id}><summary>{g.name} · {g.qty} {g.unit} · {g.order_count} คำขอ</summary>{g.lines.map(l=><p key={`${l.transaction_id}:${l.line_id}`}>{l.order_ref} · {l.qty} {g.unit}</p>)}</details>)}</div></>}
-    <div className="grid-list">{rows.slice(current*25,(current+1)*25).map(r=><article className="inv-card" key={r.id}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span>
-      <details><summary>รายละเอียดคำขอ</summary><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
+    {queue||role==='admin'?<CompactRequestList rows={displayRows.slice(current*25,(current+1)*25)} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>
+      :<div className="grid-list">{displayRows.slice(current*25,(current+1)*25).map(r=><RequestCard key={r.id} r={r} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>)}</div>}
+    {!state.busy&&!state.error&&!rows.length&&<p>ไม่มีคำขอในตัวกรองนี้</p>}
+    {last>0&&<div className="inv-toolbar"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>หน้า {current+1}/{last+1}</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}
+  </section>;
+}
+
+function RequestCard({r,queue,employee,view,role,userId,actionBusy,onAction,compact=false}) {
+  return <article className={compact?'inv-request-detail':'inv-card'} id={compact?`request-detail-${r.id}`:undefined}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span>
+      <details open={compact||undefined}><summary>รายละเอียดคำขอ</summary><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
       {!queue&&<><h4>วันที่เบิกจริง</h4>{(r.issue_times||[]).length?r.issue_times.map((at,i)=><p key={i}>{new Date(at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p>):<p>ไม่มีหลักฐานวันเบิกในบัญชี V2</p>}</>}
       {r.accounting_evidence==='unverified'&&<p>ยืนยันว่าผลิตและส่งแล้ว แต่หลักฐานการตัดสต๊อกเดิมยังไม่ยืนยัน เก็บข้อมูลเดิมไว้</p>}
       <h4>วัตถุดิบที่บันทึกไว้</h4>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</details>
       {!queue&&(!employee||view==='active')&&(cancelEligibility(r,role,userId)?<p className="inv-muted">{cancelEligibility(r,role,userId)}</p>:<button disabled={actionBusy} onClick={()=>onAction({kind:'cancel',row:r})}>{Number(r.picked_lines)>0?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'}</button>)}
       {!queue&&canCloseNotCompleted(r,role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'close_not_completed',row:r})}>ผลิตไม่สำเร็จ / คืนตามจริง</button>}
       {r.closure_kind==='production_not_completed'&&<div><p>ปิดงานแล้ว — ไม่รวมเป็นผลิตสำเร็จ</p>{(r.return_summary||[]).map(line=>{const b=r.bom_snapshot?.find(x=>x.line_id===line.line_id);return <p key={line.line_id}>{b?.material_name} · คืนจริง {line.returned_qty} · ใช้ไป/ไม่คืน {line.consumed_qty} {b?.unit}</p>;})}</div>}
-    </article>)}</div>
-    {!state.busy&&!state.error&&!rows.length&&<p>ไม่มีคำขอในตัวกรองนี้</p>}
-    {last>0&&<div className="inv-toolbar"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>หน้า {current+1}/{last+1}</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}
-  </section>;
+    </article>;
+}
+export function CompactRequestList({rows,queue=false,...detailProps}) {
+  const [selectedId,setSelectedId]=useState(null);
+  const groups=queue?pendingWorkerGroups(rows):[{key:'all',name:'ทุกหมวดสินค้า',rows}];
+  return <div className="inv-compact-requests">{groups.map(group=>{
+    const selected=group.rows.find(r=>r.id===selectedId);
+    return <section className="inv-request-group" key={group.key} aria-label={group.name}>
+      <div className="inv-request-group-heading"><h3>{group.name}</h3><span>แสดง {group.rows.length} คำขอ</span></div>
+      <ul className="inv-order-references" aria-label="ออเดอร์">{group.rows.map((r,index)=><li key={r.id}>
+        <button type="button" aria-expanded={selectedId===r.id} aria-controls={selectedId===r.id?`request-detail-${r.id}`:undefined}
+          aria-label={`${r.order_ref} · ${r.model_name} · ${r.category}`} onClick={()=>setSelectedId(selectedId===r.id?null:r.id)}>{r.order_ref}</button>{index<group.rows.length-1&&<span aria-hidden="true">,</span>}
+      </li>)}</ul>
+      {selected&&<RequestCard r={selected} queue={queue} compact {...detailProps}/>}
+    </section>;
+  })}</div>;
 }

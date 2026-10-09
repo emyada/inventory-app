@@ -188,6 +188,24 @@
 .inventory-v2 .inv-status.production_not_completed {color:#e0a48c;}
 .inventory-v2 .inv-pick-summary details {border-color:var(--inv-line);}
 .inventory-v2 .inv-modal {scrollbar-gutter:stable;}
+/* Compact supervisor order references; expanded details reuse existing actions. */
+.inventory-v2 .inv-worker-filters {gap:8px;}
+.inventory-v2 .inv-worker-filters button {border-radius:999px;margin:0;min-height:44px;}
+.inventory-v2 .inv-worker-filters span {font-variant-numeric:tabular-nums;margin-left:6px;}
+.inventory-v2 .inv-request-group {border-top:1px solid var(--inv-line);margin-top:16px;padding-top:12px;}
+.inventory-v2 .inv-request-group-heading {display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+.inventory-v2 .inv-request-group-heading h3 {margin:0;color:var(--inv-text);}
+.inventory-v2 .inv-request-group-heading span {color:var(--inv-muted);font-size:12px;white-space:nowrap;}
+.inventory-v2 .inv-order-references {display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;list-style:none;padding:0;margin:8px 0;}
+.inventory-v2 .inv-order-references li {display:inline-flex;align-items:center;max-width:100%;}
+.inventory-v2 .inv-order-references button {min-height:44px;min-width:44px;margin:0;padding:8px 6px;background:transparent;border:1px solid transparent;color:var(--inv-accent);overflow-wrap:anywhere;text-align:left;}
+.inventory-v2 .inv-order-references button[aria-expanded=true] {background:rgba(232,163,61,.12);border-color:var(--inv-accent);}
+.inventory-v2 .inv-order-references li>span {color:var(--inv-muted);}
+.inventory-v2 .inv-request-detail {padding:16px;background:var(--inv-panel);border:1px solid var(--inv-line);border-radius:10px;margin:8px 0 16px;}
+.inventory-v2 .inv-request-detail h3 {margin:0;}
+.inventory-v2 .inv-request-detail>p {margin:6px 0;}
+.inventory-v2 .inv-request-detail summary {min-height:44px;display:flex;align-items:center;}
+.inventory-v2 .inv-request-detail summary:focus-visible {outline:2px solid var(--inv-accent);outline-offset:2px;}
 @media(max-width:600px){
  .inventory-v2 .grid-list {grid-template-columns:minmax(0,1fr);}
  .inventory-v2 .inv-bom-entry {grid-template-columns:minmax(0,1fr) 78px 44px;}
