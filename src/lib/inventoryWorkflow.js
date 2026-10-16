@@ -7,6 +7,7 @@ export function cancelEligibility(row, role, userId) {
 }
 export function workflowError(error) {
   const message = error?.message || 'ส่งรายการไม่สำเร็จ';
+  if(message.includes('NEW_REQUESTS_DISABLED'))return 'หัวหน้าปิดรับคำขอใหม่ชั่วคราว รายการเดิมยังดำเนินการได้';
   if (/order.*conflict|order.*already|duplicate/i.test(message)) return `เลขออเดอร์ซ้ำ: CIEM ซ้ำรุ่นเดิมไม่ได้; หมวดผลิตอื่นซ้ำเลขออเดอร์ไม่ได้ (${message})`;
   if (/insufficient stock/i.test(message)) return `วัตถุดิบไม่พอ รายการยังไม่สำเร็จ (${message})`;
   if (/Only admin|issue\/allocation/i.test(message)) return `ต้องให้หัวหน้ายกเลิกและคืนยอด (${message})`;

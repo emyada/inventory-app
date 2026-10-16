@@ -6,7 +6,8 @@ import {createServer} from 'vite';
 // Entire UI module graph is compiled, but authentication/network are unavailable.
 test('offline component render: role navigation, report detail and modal contracts',async()=>{
  const originalFetch=globalThis.fetch;let network=0;globalThis.fetch=()=>{network++;throw new Error('Network forbidden in component test');};
- const server=await createServer({configFile:false,envDir:false,server:{middlewareMode:true,hmr:false,watch:null},plugins:[{name:'offline-supabase',enforce:'pre',resolveId(id){if(id.endsWith('/supabaseClient.js')||id==='./supabaseClient.js')return '\0offline-supabase';},load(id){if(id==='\0offline-supabase')return 'export const supabase=null;';}}]});
+ // Keep linked pnpm CommonJS packages external to Vite's ESM SSR evaluator.
+ const server=await createServer({configFile:false,envDir:false,resolve:{preserveSymlinks:true},ssr:{external:['react','react-dom','lucide-react']},server:{middlewareMode:true,hmr:false,watch:null},plugins:[{name:'offline-supabase',enforce:'pre',resolveId(id){if(id.endsWith('/supabaseClient.js')||id==='./supabaseClient.js')return '\0offline-supabase';},load(id){if(id==='\0offline-supabase')return 'export const supabase=null;';}}]});
  try {
   const {default:Workspace}=await server.ssrLoadModule('/src/views/InventoryV2.jsx');
   for(const role of ['admin','staff','purchasing']){
@@ -64,6 +65,11 @@ test('offline component render: role navigation, report detail and modal contrac
   const overflow=renderToStaticMarkup(React.createElement(Overflow,{label:'จัดการ'},React.createElement('button',null,'แก้ไข')));
   assert.ok(overflow.includes('<details'));assert.ok(!overflow.includes(' open'));assert.ok(overflow.includes('aria-label="จัดการ"'));
   const generic=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{task:{kind:'create'},api:{},role:'staff',profile:{},onClose:()=>{},onSuccess:()=>{}}));assert.ok(generic.includes('<select'));
+  const blockedPage=renderToStaticMarkup(React.createElement(RequestsPanel,{api:{},role:'staff',userId:'s',createBlocked:true,onAction:()=>{}}));
+  assert.ok(blockedPage.includes('<button disabled="">ยื่นคำขอเบิก</button>'));
+  const {RequestPolicySwitch}=await server.ssrLoadModule('/src/components/InventoryRequestPolicy.jsx');
+  const switchHtml=renderToStaticMarkup(React.createElement(RequestPolicySwitch,{policy:{employee_requests_enabled:false,revision:1},onChanged:()=>{}}));
+  assert.ok(switchHtml.includes('เปิดรับคำขอใหม่'));
   assert.equal(network,0);
  }finally{await server.close();globalThis.fetch=originalFetch;}
 });

@@ -19,7 +19,7 @@ function BatchResult({batch}) {
  {state.rows.map(r=><p key={r.order_ref}>{r.order_ref} — {{waiting:'ยังไม่ได้ส่ง',succeeded:'สำเร็จ',failed:'ไม่สำเร็จ',review:'รอตรวจสอบผล'}[r.status]}{r.error&&' · '+r.error}</p>)}
  <p>แต่ละออเดอร์บันทึกแยกกัน รายการที่สำเร็จแล้วจะไม่ส่งซ้ำ</p></div>;
 }
-export function InventoryWorkflowForm({task,api,role,userId,profile,onClose,onSuccess}) {
+export function InventoryWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,createBlocked=false}) {
   const [models,setModels]=useState(task.model?[task.model]:[]);const [materials,setMaterials]=useState([]);const [preview,setPreview]=useState([]);const [returns,setReturns]=useState([]);
   const [catalogError,setCatalogError]=useState(null);const [catalogLoading,setCatalogLoading]=useState(true);const [previewLoading,setPreviewLoading]=useState(false);
   const [modelId,setModelId]=useState(task.model?.id||'');const [orderRef,setOrderRef]=useState('');const repair=Boolean(task.repair);const [note,setNote]=useState('');
@@ -51,7 +51,7 @@ export function InventoryWorkflowForm({task,api,role,userId,profile,onClose,onSu
       const prepared=prepareWorkflow(api,task.kind,input,{role,userId,row:task.row,model:models.find(m=>m.id===modelId)});operationRef.current=prepared;setOperation(prepared);setError(null);setSending(true);prepared.execute().catch(()=>{}).finally(()=>setSending(false));
     }catch(e){setError(workflowError(e));}
   }
-  const locked=Boolean(operation)||Boolean(batch)||catalogLoading||previewLoading||Boolean(catalogError);
+  const locked=(task.kind==='create'&&createBlocked)||Boolean(operation)||Boolean(batch)||catalogLoading||previewLoading||Boolean(catalogError);
   return <section className="inv-form"><ModalHeader title={task.kind==='create'?'ยื่นคำขอเบิก':task.kind==='pick'?'ยืนยันหยิบ':issued?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'} onClose={onClose} busy={sending}/>{task.kind==='create'&&!repair&&task.model&&<div className="inv-model-summary"><strong>{task.model.name}</strong><span>{task.model.category}</span></div>}
     <p className="inv-muted">ผู้รับผิดชอบ: {profile?.full_name||'บัญชีที่เข้าสู่ระบบ'}</p>
     {(catalogLoading||previewLoading)&&<p role="status">กำลังโหลดข้อมูล…</p>}{catalogError&&<p role="alert">{catalogError} กรุณาปิดแล้วเปิดใหม่</p>}

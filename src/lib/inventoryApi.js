@@ -19,6 +19,7 @@ export const mutationParameters = Object.freeze({
   set_model_active: 'model_id is_active reason',
 });
 export const readParameters = Object.freeze({
+  request_policy: '',
   get_operation_result: 'operation_id',
   purchase_category_usage_report: 'date_from date_to after_sequence cutoff_sequence limit',
   list_finished_stock: '',

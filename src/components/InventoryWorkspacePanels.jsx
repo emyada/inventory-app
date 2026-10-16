@@ -15,15 +15,15 @@ function useRead(load,revision) {
   return state;
 }
 function ReadState({state}) {return <>{state.busy&&<p role="status">กำลังโหลด…</p>}{state.error&&<p role="alert">{state.error} กรุณาโหลดใหม่</p>}{!state.busy&&!state.error&&!state.rows.length&&<p className="inv-empty">ไม่มีรายการ</p>}</>;}
-export function ModelsFloor({role,revision,onAction,actionBusy}) {
+export function ModelsFloor({role,revision,onAction,actionBusy,createBlocked=false}) {
   const state=useRead(managementCatalog.listModels,revision);const [category,setCategory]=useState('CIEM');const [search,setSearch]=useState('');const [inactive,setInactive]=useState(false);
   const rows=state.rows.filter(m=>m.category===category&&(m.is_active||inactive)&&m.name.toLowerCase().includes(search.toLowerCase()));
   return <section><div className="inv-toolbar"><h2>เลือกรุ่นเพื่อขอเบิก</h2>{role==='admin'&&<button disabled={actionBusy} onClick={()=>onAction({kind:'save_model',category})}><Plus size={16}/> เพิ่มรุ่น</button>}</div>
-    <nav className="inv-subnav">{[...new Set([...PRODUCT_CATEGORIES,...state.rows.map(m=>m.category)])].map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}<button disabled={actionBusy} onClick={()=>onAction({kind:'create',repair:true})}>ซ่อมและอื่นๆ</button></nav>
+    <nav className="inv-subnav">{[...new Set([...PRODUCT_CATEGORIES,...state.rows.map(m=>m.category)])].map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}<button disabled={actionBusy||createBlocked} onClick={()=>onAction({kind:'create',repair:true})}>ซ่อมและอื่นๆ</button></nav>
     <label className="inv-search"><Search size={16}/><input aria-label="ค้นหารุ่น" placeholder="ค้นหารุ่น…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
     {role==='admin'&&<details><summary>ตัวเลือกการแสดง</summary><label><input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/> แสดงรุ่นที่ปิดใช้งาน</label></details>}
     <ReadState state={state}/><div className="grid-list">{rows.map(m=><article className="inv-card" key={m.id}><h3>{m.name}</h3><p className="inv-muted">{m.category}{!m.is_active?' · ปิดใช้งาน':''}</p>
-      <button className="inv-primary" disabled={actionBusy||!m.is_active} onClick={()=>onAction({kind:'create',model:m})}>{'ยื่นคำขอเบิก'}</button>
+      <button className="inv-primary" disabled={actionBusy||createBlocked||!m.is_active} onClick={()=>onAction({kind:'create',model:m})}>{'ยื่นคำขอเบิก'}</button>
       {role==='admin'&&<Overflow label={'จัดการรุ่น '+m.name}><button disabled={actionBusy} onClick={()=>onAction({kind:'save_model',row:m})}><Pencil size={14}/> แก้ไขรุ่น / BOM</button><button disabled={actionBusy} onClick={()=>onAction({kind:'set_model_active',row:m})}>{m.is_active?'ปิด':'เปิด'}ใช้งาน</button></Overflow>}</article>)}</div>
     {!state.busy&&!state.error&&!rows.length&&<p>ไม่มีรุ่นในหมวด/คำค้นนี้</p>}
   </section>;
@@ -52,7 +52,7 @@ export function SupervisorRequests(props) {
  const [view,setView]=useState('queue');
  return <section><h2>จัดการคำขอ</h2><nav className="inv-subnav" aria-label="มุมมองหัวหน้า">{[['queue','คิวหยิบ'],['all','คำขอทั้งหมด']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>setView(key)}>{label}</button>)}</nav><RequestsPanel key={view} {...props} queue={view==='queue'}/></section>;
 }
-export function RequestsPanel({api,role,userId,queue=false,revision,onAction,actionBusy}) {
+export function RequestsPanel({api,role,userId,queue=false,revision,onAction,actionBusy,createBlocked=false}) {
   const state=useRead(useCallback(()=>queue?queueRows(api):loadAllRequests(api),[api,queue]),revision);const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [page,setPage]=useState(0);
   const [dateBasis,setDateBasis]=useState('created');const [view,setView]=useState('active');const [from,setFrom]=useState('');const [to,setTo]=useState('');
   const [worker,setWorker]=useState('');
@@ -64,7 +64,7 @@ export function RequestsPanel({api,role,userId,queue=false,revision,onAction,act
   const displayRows=queue&&worker===UNASSIGNED_WORKER?pendingWorkerGroups(rows).flatMap(group=>group.rows):rows;
   const last=Math.max(0,Math.ceil(displayRows.length/25)-1);const current=Math.min(page,last);
   let round=[],roundError='';if(queue)try{round=buildPickRound(rows);}catch(e){roundError=e.message;}
-  return <section><div className="inv-toolbar"><h2>{queue?'คิวหยิบของ':role==='admin'?'คำขอทั้งหมด':'คำขอของฉัน'}</h2>{!queue&&['staff','admin'].includes(role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'create'})}>ยื่นคำขอเบิก</button>}</div>
+  return <section><div className="inv-toolbar"><h2>{queue?'คิวหยิบของ':role==='admin'?'คำขอทั้งหมด':'คำขอของฉัน'}</h2>{!queue&&['staff','admin'].includes(role)&&<button disabled={actionBusy||createBlocked} onClick={()=>onAction({kind:'create'})}>ยื่นคำขอเบิก</button>}</div>
     {employee&&<nav className="inv-subnav" aria-label="คำขอของฉัน">{[['active','งานที่ยังไม่เสร็จ'],['history','ประวัติคำขอ']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>{setView(key);setPage(0);}}>{label}</button>)}</nav>}
     {showDates&&<div className="inv-filters"><label>ค้นหาตาม<select value={dateBasis} onChange={e=>{setDateBasis(e.target.value);setPage(0);}}><option value="created">วันที่สร้างคำขอ</option><option value="issued">วันที่เบิกจริง</option></select></label><label>ตั้งแต่<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPage(0);}}/></label><label>ถึง<input type="date" value={to} onChange={e=>{setTo(e.target.value);setPage(0);}}/></label><button onClick={()=>{setFrom('');setTo('');setPage(0);}}>ล้างวันที่</button></div>}
     {invalidPeriod&&<p role="alert">วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด</p>}
