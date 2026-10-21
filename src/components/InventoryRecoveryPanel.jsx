@@ -50,5 +50,6 @@ export function InventoryRecoveryPanel({ recovery, onCompleted, onBlocked, mutat
       <details><summary>ข้อมูลสำหรับแจ้งปัญหา</summary><code>{row.operation_id}</code></details>
     </div>)}
     {results.length>0&&<p role="status">ตรวจสอบแล้ว พบรายการบันทึกสำเร็จ {results.length} รายการ</p>}
+    {results.filter(r=>r.result?.reference&&Array.isArray(r.result?.lines)).map(r=><div key={r.id}><strong>{r.result.reference}</strong><ul>{r.result.lines.map(l=><li key={l.material_id}>{l.material_name}: +{l.quantity} {l.unit} · {l.qty_before} → {l.qty_after}</li>)}</ul></div>)}
   </aside>;
 }

@@ -8,6 +8,7 @@ import {inventoryEnvironment} from '../lib/inventoryEnvironment.js';
 import {createUserInventory,createUserOpening} from '../lib/inventoryRpcClient.js';
 import {InventoryRecoveryPanel} from '../components/InventoryRecoveryPanel.jsx';
 import {InventoryManagementForm} from '../components/InventoryManagementForm.jsx';
+import {InventoryBulkReceiving} from '../components/InventoryBulkReceiving.jsx';
 import {InventoryWorkflowForm} from '../components/InventoryWorkflowForm.jsx';
 import {ModelsFloor, MaterialsPanel, RequestsPanel, SupervisorRequests} from '../components/InventoryWorkspacePanels.jsx';
 import {InventoryExtensionForm} from '../components/InventoryExtensionForm.jsx';
@@ -54,6 +55,6 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
     </div>
     <nav className="inv-bottom" aria-label="เมนูหลัก">{tabs.map(key=>{const Icon=icons[key];return <button key={key} aria-current={tab===key?'page':undefined} disabled={Boolean(task)||setupBusy} onClick={()=>setTab(key)}><Icon size={20}/><span>{key==='requests'?(role==='staff'?'คำขอของฉัน':'จัดการคำขอ'):labels[key]}</span></button>;})}</nav>
     {task && mutationsEnabled && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="ทำรายการคลังสินค้า">
-      {task.kind==='close_not_completed'?<InventoryExtensionForm key={task.kind+String(task.row?.id||task.row?.request_id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:managementKinds.includes(task.kind)?<InventoryManagementForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:<InventoryWorkflowForm createBlocked={createBlocked} key={task.kind+String(task.row?.id)} task={task} api={api} role={role} userId={profile.id} profile={profile} onClose={close} onSuccess={refresh}/>}</div></div>}
+      {task.kind==='receive_purchase_batch'?<InventoryBulkReceiving api={api} role={role} onClose={close} onSuccess={refresh}/>:task.kind==='close_not_completed'?<InventoryExtensionForm key={task.kind+String(task.row?.id||task.row?.request_id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:managementKinds.includes(task.kind)?<InventoryManagementForm key={task.kind+String(task.row?.id)} task={task} api={api} role={role} onClose={close} onSuccess={refresh}/>:<InventoryWorkflowForm createBlocked={createBlocked} key={task.kind+String(task.row?.id)} task={task} api={api} role={role} userId={profile.id} profile={profile} onClose={close} onSuccess={refresh}/>}</div></div>}
   </div></main>;
 }

@@ -29,6 +29,7 @@ test('populated Receiving and existing picking stay enabled with Staff requests 
    const props={api:{},role,actionBusy:false,createBlocked:true,onAction:()=>{}};
    const html=renderToStaticMarkup(React.createElement(MaterialsPanel,props));
    assert.ok(html.includes('Test material'));assert.ok(html.includes('10'));
+   assert.equal(html.includes('Bulk Receiving'),role==='admin');
    assert.doesNotMatch(button(html,'รับเข้า'),/disabled/);
    const busy=renderToStaticMarkup(React.createElement(MaterialsPanel,{...props,actionBusy:true}));
    assert.match(button(busy,'รับเข้า'),/disabled/);

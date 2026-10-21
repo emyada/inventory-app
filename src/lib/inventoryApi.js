@@ -9,6 +9,7 @@ export const mutationParameters = Object.freeze({
   set_material_active: 'material_id is_active reason',
   receive_purchase: 'material_id quantity reference note',
   receive_purchase_v21: 'material_id quantity supplier_source document_type po_number invoice_number note',
+  receive_purchase_batch: 'lines supplier_source document_type po_number invoice_number document_date note',
   stocktake: 'material_id counted_qty reason expected_version',
   create_request: 'model_id order_ref repair_spec',
   confirm_pick: 'items',

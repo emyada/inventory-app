@@ -10,9 +10,9 @@ import {filterRequests,employeeStatus} from '../lib/inventoryRequestUX.js';
 import {cancelEligibility} from '../lib/inventoryWorkflow.js';
 import {pendingWorkerGroups, UNASSIGNED_WORKER} from '../lib/inventoryRequestPresentation.js';
 function useRead(load,revision) {
-  const [state,setState]=useState({busy:true,error:null,rows:[]});
-  useEffect(()=>{let alive=true;setState({busy:true,error:null,rows:[]});load().then(rows=>{if(alive)setState({busy:false,error:null,rows});}).catch(e=>{if(alive)setState({busy:false,error:e.message,rows:[]});});return()=>{alive=false;};},[load,revision]);
-  return state;
+  const [state,setState]=useState(null);
+  useEffect(()=>{let alive=true;Promise.resolve().then(load).then(rows=>{if(alive)setState({load,revision,busy:false,error:null,rows});}).catch(e=>{if(alive)setState({load,revision,busy:false,error:e.message,rows:[]});});return()=>{alive=false;};},[load,revision]);
+  return state?.load===load&&state?.revision===revision?state:{busy:true,error:null,rows:[]};
 }
 function ReadState({state}) {return <>{state.busy&&<p role="status">กำลังโหลด…</p>}{state.error&&<p role="alert">{state.error} กรุณาโหลดใหม่</p>}{!state.busy&&!state.error&&!state.rows.length&&<p className="inv-empty">ไม่มีรายการ</p>}</>;}
 export function ModelsFloor({role,revision,onAction,actionBusy,createBlocked=false}) {
@@ -32,7 +32,7 @@ export function MaterialsPanel({api,role,revision,onAction,actionBusy}) {
   const state=useRead(useCallback(()=>api.list_materials({include_inactive:true}),[api]),revision);const [search,setSearch]=useState('');const [low,setLow]=useState(false);const [inactive,setInactive]=useState(false);
   const lowRows=state.rows.filter(m=>m.is_active&&Number(m.qty)<=Number(m.low_stock_threshold));
   const rows=state.rows.filter(m=>(m.is_active||inactive)&&m.name.toLowerCase().includes(search.toLowerCase())&&(!low||Number(m.qty)<=Number(m.low_stock_threshold)));
-  return <section><div className="inv-toolbar"><h2>คลังวัตถุดิบ</h2>{role==='admin'&&<button disabled={actionBusy} onClick={()=>onAction({kind:'create_material'})}><Plus size={16}/> เพิ่มวัตถุดิบ</button>}</div>
+  return <section><div className="inv-toolbar"><h2>คลังวัตถุดิบ</h2>{role==='admin'&&<><button disabled={actionBusy} onClick={()=>onAction({kind:'receive_purchase_batch'})}>Bulk Receiving — รับเข้าหลายรายการ</button><button disabled={actionBusy} onClick={()=>onAction({kind:'create_material'})}><Plus size={16}/> เพิ่มวัตถุดิบ</button></>}</div>
     {!state.busy&&!state.error&&<details className="inv-low-summary"><summary><AlertTriangle size={16}/> ใกล้หมด {lowRows.length} รายการ</summary><ul>{lowRows.map(m=><li key={m.id}><span>{m.name}</span><strong>{m.qty} {m.unit}</strong></li>)}</ul>{!lowRows.length&&<p>ไม่มีวัตถุดิบใกล้หมด</p>}</details>}
     <div className="inv-filters"><label>ค้นหาวัตถุดิบ<input value={search} onChange={e=>setSearch(e.target.value)}/></label><label><input type="checkbox" checked={low} onChange={e=>setLow(e.target.checked)}/> เฉพาะใกล้หมด</label><label><input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/> รวมที่ปิดใช้งาน</label></div>
     <ReadState state={state}/><div className="grid-list">{rows.map(m=><article className="inv-card" key={m.id}><h3>{m.name}</h3><strong className="inv-balance">{m.qty} {m.unit}</strong>{Number(m.qty)<=Number(m.low_stock_threshold)&&<p className="inv-warning"><AlertTriangle size={14}/> ใกล้หมด</p>}
