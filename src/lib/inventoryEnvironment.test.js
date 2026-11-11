@@ -16,13 +16,19 @@ function configured(settings=env){
   {mutationsEnabled:policy.mutationsEnabled,assertAccess:()=>assertInventoryEnvironment(policy),uuid:()=>assert.fail('unexpected UUID')});
  return {policy,api,calls};
 }
-test('matching expected ref: boot and all eight read RPCs work with mutations default false',async()=>{
+test('matching expected ref: boot and all 13 approved inventory read RPCs work with mutations default false',async()=>{
  const {policy,api,calls}=configured();let rendered=false;
  assert.equal(policy.error,null);assert.equal(policy.mutationsEnabled,false);
  await bootstrapInventory(policy,{load:async()=>({ok:true}),render:v=>rendered=v.ok,blocked:()=>assert.fail('blocked')});
- assert.equal(rendered,true);assert.deepEqual(Object.keys(readParameters).sort(),['get_operation_result','list_finished_stock','finished_balance_report','list_materials','list_my_requests','list_pick_queue','balance_report','list_movements'].sort());
+ assert.equal(rendered,true);assert.deepEqual(Object.keys(readParameters).sort(),['get_operation_result','list_finished_stock','finished_balance_report','list_materials','list_my_requests','list_pick_queue','balance_report','list_movements','purchase_category_usage_report','request_policy','bom_history','request_reference_settings','reference_history'].sort());
  for(const name of Object.keys(readParameters))await api[name](name==='get_operation_result'?{operation_id:U}:{});
- assert.equal(calls.length,8);
+ assert.equal(calls.length,13);
+ assert.deepEqual(calls.map(c=>c.name).sort(),Object.keys(readParameters).map(name=>'inventory_'+name).sort());
+ const before=calls.length;
+ await api.bom_history({model_id:U});await api.reference_history({reference:'0001',category:'CIEM'});
+ assert.deepEqual(calls.slice(before),[{name:'inventory_bom_history',args:{p_model_id:U}},{name:'inventory_reference_history',args:{p_reference:'0001',p_category:'CIEM'}}]);
+ assert.throws(()=>api.request_reference_settings({role:'admin'}),/Unsupported RPC parameter/);
+ assert.equal(calls.length,before+2);
 });
 test('mismatch: no App/Auth import, no render and no RPC including reads',async()=>{
  const {policy,api,calls}=configured({...env,VITE_SUPABASE_EXPECTED_PROJECT_REF:'zzzzzzzzzzzzzzzzzzzz'});
@@ -71,7 +77,11 @@ test('feature flag false retains legacy App and ignores V2-only expected ref che
  let loaded=false;await bootstrapInventory(policy,{load:async()=>{loaded=true;return {};},render:()=>{},blocked:()=>assert.fail('legacy blocked')});
  assert.equal(loaded,true);
  const base=JSON.parse(readFileSync('docs/inventory-migration-drafts/REACT_C1_BASELINE.json','utf8'));
- assert.equal(readFileSync('src/App.jsx','utf8').replaceAll('\r\n','\n'),base['src/App.jsx']);
+ // Preserve the legacy workflow byte-for-byte; the auth/V2 routing shell now has its own behavioral tests.
+ const legacy=source=>source.replaceAll('\r\n','\n').slice(source.replaceAll('\r\n','\n').indexOf('function Workspace('));
+ assert.ok(base['src/App.jsx'].includes('function Workspace('));
+ const current=readFileSync('src/App.jsx','utf8');assert.ok(current.includes('function Workspace('));
+ assert.equal(legacy(current),legacy(base['src/App.jsx']));
 });
 test('real banner component renders exact read-only label; omitted for legacy or enabled mutations',()=>{
  const html=renderToStaticMarkup(createElement(InventoryModeBanner,{policy:inventoryEnvironmentPolicy(env)}));

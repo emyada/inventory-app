@@ -1,0 +1,24 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {startSessionLifecycle} from './sessionLifecycle.js';
+import {createRefreshGroup,pullDistance,nestedScrollOrControl} from './mobileRefresh.js';
+import {readFileSync} from 'node:fs';
+const tick=()=>new Promise(r=>setTimeout(r,0));
+function mock(){let event,resolveProfile;const states=[];const session={user:{id:'admin'}};
+ const client={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:fn=>{event=fn;return {data:{subscription:{unsubscribe(){}}}};}},from:()=>({select:()=>({eq:()=>({single:()=>new Promise(r=>{resolveProfile=r;})})})})};
+ const lifecycle=startSessionLifecycle(client,s=>states.push(s),queueMicrotask);
+ return {states,session,lifecycle,event:(s)=>event('EVENT',s),profile:(enabled=true)=>resolveProfile({data:{id:'admin',role:'admin',enabled}})};
+}
+test('restore waits for profile and never emits logged-out state',async()=>{const m=mock();await tick();assert.equal(m.states.at(-1).loading,true);m.profile();await tick();assert.equal(m.states.at(-1).profile.role,'admin');assert.ok(m.states.every(s=>s.session));m.lifecycle.stop();});
+test('logout invalidates pending profile',async()=>{const m=mock();await tick();m.event(null);m.profile();await tick();assert.equal(m.states.at(-1).session,null);assert.equal(m.states.at(-1).profile,null);m.lifecycle.stop();});
+test('disabled profile remains disabled, never grants active status',async()=>{const m=mock();await tick();m.profile(false);await tick();assert.equal(m.states.at(-1).profile.enabled,false);m.lifecycle.stop();});
+test('background refresh keeps mounted session while checking profile',async()=>{const m=mock();await tick();m.profile();await tick();const n=m.states.length;const p=m.lifecycle.refresh();assert.equal(m.states.length,n);m.profile(false);await p;assert.equal(m.states.at(-1).profile.enabled,false);m.lifecycle.stop();});
+test('unmount ignores in-flight response',async()=>{const m=mock();await tick();m.lifecycle.stop();const n=m.states.length;m.profile();await tick();assert.equal(m.states.length,n);});
+test('profile failure fails closed with actionable error',async()=>{const states=[];const c={auth:{getSession:async()=>({data:{session:{user:{id:'a'}}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},from:()=>({select:()=>({eq:()=>({single:async()=>({error:Error('offline')})})})})};const l=startSessionLifecycle(c,s=>states.push(s));await tick();assert.equal(states.at(-1).profile,null);assert.ok(states.at(-1).error);l.stop();});
+test('refresh coalesces concurrent calls and runs all registered readers',async()=>{const g=createRefreshGroup();let count=0,finish;g.register(()=>{count++;return new Promise(r=>{finish=r;});});const a=g.refresh(),b=g.refresh();assert.equal(a,b);await tick();assert.equal(count,1);finish();await a;});
+test('partial read failures reject; retry remains available',async()=>{const g=createRefreshGroup();let fail=true;g.register(()=>{if(fail)throw Error('offline');});await assert.rejects(g.refresh());fail=false;await g.refresh();});
+test('unmounted screens are not refreshed',async()=>{const g=createRefreshGroup();let n=0;const remove=g.register(()=>n++);remove();await g.refresh();assert.equal(n,0);});
+test('pull threshold, scroll, sideways and pinch guards',()=>{const s={x:0,y:0};assert.equal(pullDistance(s,{x:0,y:120},true),60);assert.equal(pullDistance(s,{x:0,y:120},false),0);assert.equal(pullDistance(s,{x:50,y:120},true),0);assert.equal(pullDistance(s,{x:0,y:120},true,2),0);assert.equal(pullDistance(s,{x:0,y:-1},true),0);});
+test('interactive targets cannot start pull',()=>{assert.equal(nestedScrollOrControl({matches:()=>true},{}),true);});
+test('viewport allows pinch zoom; touch manipulation and input sizing present',()=>{const html=readFileSync('index.html','utf8'),css=readFileSync('src/index.css','utf8');assert.doesNotMatch(html,/user-scalable=no|maximum-scale/);assert.match(css,/touch-action: manipulation/);assert.match(css,/font-size: 16px/);});
+test('Supabase owns persisted sessions, no password storage added',()=>{const s=readFileSync('src/lib/supabaseClient.js','utf8');assert.match(s,/persistSession: true/);assert.match(s,/autoRefreshToken: true/);assert.doesNotMatch(readFileSync('src/lib/sessionLifecycle.js','utf8'),/localStorage|password/);});

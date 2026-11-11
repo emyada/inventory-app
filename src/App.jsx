@@ -21,10 +21,12 @@ import { RecheckView } from './views/RecheckView';
 import { SettingsView } from './views/SettingsView';
 
 export default function App() {
-  const { session, profile, role, loading: authLoading, signOut } = useAuth();
+  const { session, profile, role, loading: authLoading, error: authError, signOut } = useAuth();
 
   if (authLoading) return <CenteredMsg text="กำลังตรวจสอบการเข้าสู่ระบบ..." />;
+  if (authError) return <main role="alert"><p>{authError}</p><button onClick={()=>window.location.reload()}>ลองใหม่</button><button onClick={signOut}>ออกจากระบบ</button></main>;
   if (!session) return <Login />;
+  if (profile?.id === session.user.id && profile.enabled === false) return <main><p>บัญชีถูกระงับ โปรดติดต่อผู้ดูแล</p><button onClick={signOut}>ออกจากระบบ</button></main>;
   if (inventoryV2Enabled(import.meta.env.VITE_INVENTORY_V2_ENABLED)) {
     if (!profile || profile.id !== session.user.id) return <CenteredMsg text="กำลังโหลดสิทธิ์ผู้ใช้…" />;
     return <React.Suspense fallback={<CenteredMsg text="กำลังโหลด Inventory V2…" />}><InventoryV2 key={`${session.user.id}:${role}`} profile={profile} role={role} signOut={signOut} /></React.Suspense>;

@@ -1,3 +1,5 @@
+import {previewReference,requestReferenceContract} from './requestReferences.js';
+import {duplicateOrderWarning} from './duplicateOrderPolicy.js';
 export function cancelEligibility(row, role, userId) {
   if (['cancelled','production_not_completed','legacy_completed_shipped'].includes(row.workflow_state)) return 'รายการนี้ยกเลิกแล้ว';
   if (role === 'admin') return null;
@@ -6,6 +8,7 @@ export function cancelEligibility(row, role, userId) {
   return null; // Server checks allocations unavailable to this read RPC; UI is advisory only.
 }
 export function workflowError(error) {
+  const duplicate=duplicateOrderWarning(error);if(duplicate)return duplicate;
   const message = error?.message || 'ส่งรายการไม่สำเร็จ';
   if(message.includes('NEW_REQUESTS_DISABLED'))return 'หัวหน้าปิดรับคำขอใหม่ชั่วคราว รายการเดิมยังดำเนินการได้';
   if (/order.*conflict|order.*already|duplicate/i.test(message)) return `เลขออเดอร์ซ้ำ: CIEM ซ้ำรุ่นเดิมไม่ได้; หมวดผลิตอื่นซ้ำเลขออเดอร์ไม่ได้ (${message})`;
@@ -13,9 +16,15 @@ export function workflowError(error) {
   if (/Only admin|issue\/allocation/i.test(message)) return `ต้องให้หัวหน้ายกเลิกและคืนยอด (${message})`;
   return message;
 }
-export function prepareWorkflow(api, kind, input, { role, userId, row, model } = {}) {
+export function prepareWorkflow(api, kind, input, { role, userId, row, model, requestContract } = {}) {
   if (kind === 'create') {
     if (!['admin','staff'].includes(role)) throw new Error('ไม่มีสิทธิ์สร้างคำขอ');
+    const modern=(model?.request_contract||requestContract)===requestReferenceContract;
+    if(modern){
+      const ref=previewReference(model,input.order_ref,{repair:Boolean(input.repair_spec)});
+      if(input.repair_spec&&(!input.repair_spec.note?.trim()||!input.repair_spec.bom?.length))throw new Error('งานซ่อมต้องมีหมายเหตุและวัตถุดิบ');
+      return api.create_request_v2({model_id:input.repair_spec?null:input.model_id,order_ref:ref.raw,work_mode:input.repair_spec?'standard':(input.work_mode||'standard'),repair_spec:input.repair_spec?{subtype:input.repair_spec.subtype,note:input.repair_spec.note.trim(),bom:input.repair_spec.bom.map(b=>({material_id:b.material_id,qty:b.qty}))}:null});
+    }
     if (!input.order_ref?.trim() && (input.repair_spec || model?.category!=='Universal' || model.id!==input.model_id)) throw new Error('กรุณาระบุเลขออเดอร์');
     if (input.repair_spec) {
       if (!input.repair_spec.note?.trim() || !input.repair_spec.bom?.length) throw new Error('งานซ่อมต้องมีหมายเหตุและวัตถุดิบ');

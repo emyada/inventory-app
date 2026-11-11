@@ -1,3 +1,5 @@
+import {BomHistory} from './BomHistory.jsx';
+import {ModelPrefixSettings} from './ModelPrefixSettings.jsx';
 import {ModalHeader,BomEditor} from './InventoryUI.jsx';
 import { isDefinitiveFailure } from '../lib/inventoryFailure.js';
 import React, { useEffect, useRef, useState } from 'react';
@@ -52,8 +54,10 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
     async function load() {
       if(!canManage(role,kind))throw new Error('ไม่มีสิทธิ์ทำรายการนี้');
       if(kind==='save_model'){
-        const [m,b]=await Promise.all([api.list_materials({include_inactive:true}),task.row?.id?catalog.loadBom(task.row.id):Promise.resolve([])]);
-        if(active){setMaterials(m);setValues(v=>({...v,bom:b.map(line=>({material_id:line.material_id,qty:String(line.qty)}))}));}
+        const [m,audit]=await Promise.all([api.list_materials({include_inactive:true}),api.bom_history({model_id:task.row?.id||null})]);
+        if(audit.contract!=='p1-bom-history-v1')throw new Error('BOM history backend ยังไม่พร้อม');
+        const b=audit.current_bom;
+        if(active){setMaterials(m);setValues(v=>({...v,expected_bom:b,bom:b.map(line=>({material_id:line.material_id,qty:String(line.qty)}))}));}
       }else if(task.row && kind!=='set_model_active'){
         const found=(await api.list_materials({include_inactive:true})).find(m=>m.id===task.row.id);
         if(!found)throw new Error('Material missing');
@@ -101,12 +105,14 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
         <p>หากยอดเปลี่ยนระหว่างนับ ระบบจะให้ตรวจยอดล่าสุดก่อนยืนยันใหม่</p></>}
       {['set_material_active','set_model_active'].includes(kind) && <p>ต้องการ{values.is_active?'เปิด':'ปิด'}ใช้งาน · ประวัติเดิมยังอ่านได้</p>}
       {['create_material','stocktake','set_material_active','set_model_active'].includes(kind) && <label>เหตุผล<textarea value={values.reason} onChange={e=>change('reason',e.target.value)}/></label>}
-      {kind==='save_model' && <><label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
+      {kind==='save_model' && <><label>เหตุผลแก้ BOM<textarea required value={values.reason} onChange={e=>change('reason',e.target.value)}/></label><label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
         {[...new Set(['CIEM','Lifestyle','Sleepplug','Tactical','Universal',values.category])].filter(Boolean).map(c=><option key={c}>{c}</option>)}</select></label>
         <BomEditor materials={materials} rows={values.bom} onChange={bom=>change('bom',bom)}/>
         <details><summary>ผลต่อคำขอเดิม</summary><p>แก้ BOM สำหรับคำขอใหม่เท่านั้น สถานะเปิด/ปิดรุ่นไม่เปลี่ยน</p></details></>}
       <button type="submit">บันทึก</button>
     </fieldset></form>
+    {kind==='save_model'&&row?.id&&<BomHistory api={api} modelId={row.id} role={role}/>}
+    {kind==='save_model'&&row?.id&&<ModelPrefixSettings api={api} model={row} role={role}/>}
     {busy && <p role="status">กำลังตรวจ/ส่งรายการ…</p>}
     {error && <p role="alert">{managementError(error)}{error.reloadError && ' · โหลดข้อมูลล่าสุดไม่สำเร็จ'}</p>}
     {isStaleStock(error) && <p>โหลดข้อมูลล่าสุด: {row?.qty} {row?.unit} กรุณาทบทวนการนับก่อนทำรายการต่อ</p>}

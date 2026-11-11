@@ -1,7 +1,7 @@
 export const inventoryV2Enabled = value => value === 'true';
 export const v2Tabs = role => role === 'admin' ? ['requests','queue','materials','report','movements']
   : role === 'staff' ? ['requests'] : role === 'purchasing' ? ['materials','report','movements'] : [];
-export const manualPendingLines = row => (row.lines ?? []).filter(line => (line.requires_picking ?? true) && !line.picked);
+export const manualPendingLines = row => (row.lines ?? []).filter(line => (row.confirmation_contract === 'admin-whole-order-v1' || (line.requires_picking ?? true)) && !line.picked);
 
 // No mutations or table access accepted by this controller.
 export function createInventoryReader(api, tab, params = {}, pageSize = 50) {

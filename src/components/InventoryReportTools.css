@@ -1,0 +1,13 @@
+.report-category-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:12px 0}
+.report-category-cards button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;background:#20252a;border:1px solid #46504b;border-radius:10px;padding:12px;color:#edf3ef;text-align:left}
+.inventory-v2 .report-category-cards button[aria-pressed=true]{border-color:#e8b65b;background:#302a20;color:#edf3ef}
+.report-category-cards strong{color:#e8b65b;font-size:1.05rem}
+.report-category-cards small,.simulation-value{color:#91dac4}
+.report-simulation{margin:16px 0;padding:14px;border:1px solid #46504b;border-radius:12px;background:#1a2022;color:#edf3ef}
+.simulation-warning{color:#f0c574;font-weight:600}
+.simulation-inputs{border:0;padding:0;margin:12px 0;min-width:0}
+.simulation-entry{display:grid;grid-template-columns:1fr 2fr 1fr 1fr auto;gap:8px;align-items:end;margin:10px 0}
+.simulation-entry label{display:flex;flex-direction:column;gap:4px;min-width:0}
+.simulation-entry input,.simulation-entry select{width:100%;box-sizing:border-box;min-width:0}
+.report-drilldown{border-left:3px solid #91dac4;padding-left:12px}
+@media(max-width:640px){.simulation-entry{grid-template-columns:1fr 1fr;border-bottom:1px solid #46504b;padding-bottom:12px}.report-simulation{padding:10px}.report-category-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
