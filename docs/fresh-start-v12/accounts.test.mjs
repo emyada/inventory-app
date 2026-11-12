@@ -17,7 +17,7 @@ for (const flag of [undefined, 'false', '', 'TRUE', true]) {
     }
   });
 }
-async function request({role='admin',enabled=true,body,env=cfg,token=true,deny=false,createError=null,authError=false}) {
+async function request({role='admin',enabled=true,body,env=cfg,token=true,deny=false,createError=null,authError=false,healthError=false,healthId=id}) {
   const calls=[];
   const connect=(_url,key)=>{
     if(key===cfg.VITE_SUPABASE_ANON_KEY) return {
@@ -26,6 +26,7 @@ async function request({role='admin',enabled=true,body,env=cfg,token=true,deny=f
     };
     calls.push('privileged');
     return {rpc:async(_name,args)=>{calls.push(args);return {error:deny};},auth:{admin:{
+      getUserById:async actor=>{calls.push({readActor:actor});return {data:{user:{id:healthId}},error:healthError};},
       createUser:async args=>{calls.push(args);return {error:createError};},
       updateUserById:async()=>{calls.push('reset');return {};}
     }}};
@@ -34,6 +35,25 @@ async function request({role='admin',enabled=true,body,env=cfg,token=true,deny=f
   await accountEndpoint(env,connect)({method:'POST',headers:token?{authorization:'Bearer mock'}:{},body},res);
   return {res,calls};
 }
+const v2ref='uziblxwylaxzjymdgrml';
+const healthCfg={...cfg,STOCK_ACCOUNT_MUTATIONS_ENABLED:'false',STOCK_ACCOUNT_PROJECT_REF:v2ref,VITE_SUPABASE_EXPECTED_PROJECT_REF:v2ref,VITE_SUPABASE_URL:'https://'+v2ref+'.supabase.co'};
+test('health reads only authenticated actor with mutations disabled and returns no identity or secret',async()=>{
+ const {res,calls}=await request({env:healthCfg,body:{action:'health',id:'forged'}});
+ assert.equal(res.code,200);assert.deepEqual(res.value,{ok:true,accountService:'ready'});
+ assert.deepEqual(calls,['privileged',{readActor:id}]);
+});
+test('health denies Staff, Purchasing, disabled Admin, absent and invalid sessions before privileged access',async()=>{
+ for(const [options,status] of [[{role:'staff'},403],[{role:'purchasing'},403],[{enabled:false},403],[{token:false},401],[{authError:true},401]]){
+  const {res,calls}=await request({...options,env:healthCfg,body:{action:'health'}});
+  assert.equal(res.code,status);assert.deepEqual(calls,[]);
+ }
+});
+test('health fails closed on missing secret, wrong project, rejected key and mismatched actor',async()=>{
+ for(const options of [{env:{...healthCfg,STOCK_ACCOUNT_SECRET:undefined}},{env:cfg},{healthError:{message:'private key diagnostics'}},{healthId:'other'}]){
+  const {res}=await request({env:healthCfg,...options,body:{action:'health'}});
+  assert.equal(res.code,503);assert.deepEqual(res.value,{error:'Account service not ready'});
+ }
+});
 test('case-insensitive alias without email or whitespace injection',()=>{
   assert.equal(loginAlias('  Test.A '),'test.a@iem-workshop.local');
   for(const input of ['x@y','a b','',null,'../a']) assert.equal(loginAlias(input),null);

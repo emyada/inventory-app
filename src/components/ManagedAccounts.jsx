@@ -21,7 +21,7 @@ export function ManagedAccounts() {
     try {
       if(body) await call(body);
       setAccounts((await call({action:'list'})).accounts);
-      if(body) setMessage('บันทึกแล้ว');
+      if(body) setMessage(body.action==='health'?'บริการจัดการบัญชีพร้อมใช้งาน':'บันทึกแล้ว');
     } catch(error) {setMessage(error.message || 'โหลดรายการอีกครั้งเพื่อตรวจผล');}
     finally {inFlight.current=false;setBusy(false);}
   }
@@ -39,6 +39,7 @@ export function ManagedAccounts() {
   }
   return <section><button disabled={busy} aria-expanded={open} onClick={()=>{setOpen(!open);if(!open) void run();}}>จัดการบัญชีผู้ใช้</button>
     {open&&<fieldset disabled={busy}><legend>บัญชีพนักงาน</legend>
+      <button type="button" onClick={()=>void run({action:'health'})}>ตรวจความพร้อมบริการบัญชี (ไม่เขียนข้อมูล)</button>
       <label>เลือกบัญชี <select value={id} onChange={e=>{setId(e.target.value);setMessage('');}}><option value="">สร้างบัญชีใหม่</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.username} · {a.enabled?'เปิดใช้งาน':'ระงับ'}</option>)}</select></label>
       <form key={id} onSubmit={submit}>
         {!selected&&<label>ชื่อผู้ใช้ <input name="username" required maxLength={64} autoCapitalize="none"/></label>}

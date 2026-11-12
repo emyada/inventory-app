@@ -8,7 +8,7 @@ export function accountEndpoint(env, connect = createClient) {
     const fail = (status, error) => res.status(status).json({ error });
     if (req.method !== 'POST') return fail(405, 'POST required');
     // Fail closed on the server, before any Auth or database connection.
-    if (req.body?.action !== 'list' && env.STOCK_ACCOUNT_MUTATIONS_ENABLED !== 'true') {
+    if (!['list','health'].includes(req.body?.action) && env.STOCK_ACCOUNT_MUTATIONS_ENABLED !== 'true') {
       return fail(403, 'READ ONLY: account mutations disabled');
     }
     const ref = env.STOCK_ACCOUNT_PROJECT_REF;
@@ -25,6 +25,14 @@ export function accountEndpoint(env, connect = createClient) {
       const {data:actor} = await userClient.from('profiles').select('role,enabled').eq('id',user.id).single();
       if (!actor?.enabled || actor.role !== 'admin') return fail(403,'Admin required');
       const { action, id, username, name, role, password } = req.body || {};
+      if (action === 'health') {
+        if (ref !== 'uziblxwylaxzjymdgrml' || !env.STOCK_ACCOUNT_SECRET) return fail(503,'Account service not ready');
+        // Read only the authenticated actor; never accept a target ID from the client.
+        const checker = connect(env.VITE_SUPABASE_URL,env.STOCK_ACCOUNT_SECRET,{auth});
+        const {data,error} = await checker.auth.admin.getUserById(user.id);
+        if (error || data?.user?.id !== user.id) return fail(503,'Account service not ready');
+        return res.status(200).json({ok:true,accountService:'ready'});
+      }
       if (action === 'list') {
         const {data,error} = await userClient.from('profiles').select('id,username,full_name,role,enabled').order('username');
         return error ? fail(503,'โหลดบัญชีไม่สำเร็จ') : res.status(200).json({accounts:data});
