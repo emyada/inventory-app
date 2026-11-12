@@ -9,3 +9,13 @@ dist-staging
 
 # Local release-validation output
 dist-production-preflight
+
+# Local evidence, generated output and private configuration are not release source.
+*.local.log
+__pycache__/
+*.pyc
+.vercel/
+outputs/
+.env.*
+!.env.example
+!.env.staging.example

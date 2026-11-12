@@ -1,9 +1,13 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import {useRefreshRead} from '../hooks/useRefreshRead.js';
+import React, {useMemo, useState} from 'react';
 import {Download, RefreshCw} from 'lucide-react';
 import {loadReportData, localDay, modelSummary, allocationRows, sumAmounts, negative, reportCSV, WORKFLOW_LABELS, MOVEMENT_LABELS} from '../lib/inventoryReports.js';
 import {reportProjection,REPAIR_CATEGORY,categoryOverview} from '../lib/inventoryReportFilters.js';
 import {PRODUCT_CATEGORIES} from '../lib/inventoryReports.js';
 import {downloadCSV} from '../utils/csv.js';
+import {CanonicalReports} from './CanonicalReports.jsx';
+import {InventorySimulation} from './InventorySimulation.jsx';
+import {InventoryCategoryCards} from './InventoryCategoryCards.jsx';
 const requestColumns=[['order_ref','ออเดอร์ / อ้างอิง'],['model_name','รุ่น ณ วันที่ขอ'],['category','หมวด'],['created_at','เวลาสร้าง'],['status_label','สถานะปัจจุบัน'],['requester','ผู้ขอ'],['cancelled_at','เวลายกเลิก'],['model_id','รหัสรุ่น'],['request_id','รหัสคำขอ']];
 requestColumns.push(['accounting_evidence','Historical inventory evidence']);
 const movementColumns=[['occurred_at','เวลา'],['material_name','วัตถุดิบ'],['reason_label','ประเภท'],['delta','เปลี่ยนแปลง'],['unit','หน่วย'],['qty_before','ก่อน'],['qty_after','หลัง'],['reference','อ้างอิง'],['supplier_source','ผู้ขาย / แหล่งที่ซื้อ'],['document_type','เอกสาร'],['po_number','PO'],['invoice_number','Invoice'],['note','หมายเหตุ'],['actor_id','รหัสผู้ทำรายการ'],['id','รหัสรายการ'],['category','หมวด'],['model_name','รุ่น'],['operation_id','รหัสการบันทึก'],['version_before','รุ่นยอดก่อน'],['version_after','รุ่นยอดหลัง']];
@@ -16,10 +20,14 @@ export function ReportTable({rows,columns}) {
     {last>0&&<div className="inv-toolbar"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>หน้า {current+1}/{last+1} · {rows.length} รายการ</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}</>;
 }
 export function InventoryReports({api,role,revision}) {
+  const [mode,setMode]=useState('legacy');
+  return <>{role==='admin'&&<nav className="inv-subnav" aria-label="ชุดรายงาน"><button aria-pressed={mode==='legacy'} onClick={()=>setMode('legacy')}>รายงานเดิม</button><button aria-pressed={mode==='canonical'} onClick={()=>setMode('canonical')}>รายงานการเบิกจริง</button></nav>}{mode==='canonical'&&role==='admin'?<CanonicalReports api={api} role={role} revision={revision}/>:<LegacyInventoryReports api={api} role={role} revision={revision}/>}</>;
+}
+function LegacyInventoryReports({api,role,revision}) {
   const today=localDay(new Date());const [from,setFrom]=useState(today.slice(0,8)+'01');const [to,setTo]=useState(today);
   const [tab,setTab]=useState('dashboard');const [reload,setReload]=useState(0);const [loadedData,setData]=useState(null);const [error,setError]=useState(null);const [busy,setBusy]=useState(true);
   const [overviewBasis,setOverviewBasis]=useState('issued');const [category,setCategory]=useState('');const [material,setMaterial]=useState('');const [search,setSearch]=useState('');const [status,setStatus]=useState('');
-  useEffect(()=>{let active=true;setBusy(true);setError(null);setData(null);loadReportData(api,role,from,to).then(d=>{if(active)setData({...d,from,to});}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;};},[api,role,from,to,revision,reload]);
+  useRefreshRead(()=>{setBusy(true);setError(null);return loadReportData(api,role,from,to);},d=>{setData({...d,from,to});setBusy(false);},e=>{setError(e.message);setBusy(false);},[api,role,from,to,revision,reload]);
   const data=loadedData?.from===from&&loadedData?.to===to?loadedData:null;
   const projection=useMemo(()=>data?reportProjection(data,from,to,{category,status,search,material}):{rows:[],moves:[],allocations:[],balances:[],requirements:[],scoped:false},[data,from,to,category,status,search,material]);
   const rows=projection.rows.map(r=>({...r,status_label:WORKFLOW_LABELS[r.status]||r.status}));
@@ -34,14 +42,15 @@ export function InventoryReports({api,role,revision}) {
   function exportRows(name,values,columns){if(!canExport)return;downloadCSV(`${name}_${from}_${to}.csv`,reportCSV(values,columns,{from,to,timezone:'Asia/Bangkok',captured_at:data.capturedAt,movement_cutoff:data.cutoff,material_filter:material||'all',category_filter:category||'all',scope:projection.scoped?'allocated request usage; no category stock balance':'whole ledger',request_search:search,status_filter:status||'all',overview_date_basis:overviewBasis,status_basis:name==='categories'?'current at capture; selection by '+overviewBasis+' Bangkok dates, one count per request':'current at capture; request period by creation; movement period by occurrence'}));}
   const exportButton=(name,values,columns,label)=><button disabled={!canExport} onClick={()=>exportRows(name,values,columns)}><Download size={14}/> {label}</button>;
   return <section className="inv-reports"><div className="inv-toolbar"><h2>รายงาน</h2><button disabled={busy} onClick={()=>setReload(n=>n+1)}><RefreshCw size={16}/> โหลดใหม่</button></div>
+    {['admin','purchasing'].includes(role)&&<details><summary>เครื่องคำนวณจำลอง Using / Used (ไม่เปลี่ยนสต็อก)</summary><InventorySimulation api={api} role={role}/></details>}
     <div className="inv-filters"><label>ตั้งแต่<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>ถึง<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></div>
     <label>หมวดสินค้า<select aria-label="หมวดรายงาน" value={category} onChange={e=>setCategory(e.target.value)}><option value="">ทั้งหมด</option>{[...PRODUCT_CATEGORIES,REPAIR_CATEGORY].map(c=><option key={c}>{c}</option>)}</select></label>
     {projection.scoped&&<p className="inv-notice">ยอดเบิก/คืนตามหมวด · ไม่ใช่ยอดคงคลังแยกหมวด</p>}
     <details><summary>ขอบเขตรายงาน</summary><p className="inv-muted">เวลาไทย · ภาพรวมเลือกวันเบิกจริง/วันสร้างได้ · แท็บคำขอใช้วันสร้าง แสดงสถานะปัจจุบัน · การรับ/เบิก/คืนตามวันที่เคลื่อนไหว ไม่ใช่วันที่จัดส่งสินค้า</p></details>
-    <div className="inv-actions"><button type="button" disabled title="ยังไม่เชื่อมต่อ Google Sheets">เปิด Google Sheet · เร็วๆ นี้</button></div>
     <nav className="inv-subnav">{tabs.map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
     {busy&&<p role="status">กำลังโหลดข้อมูลรายงานทุกหน้า…</p>}{error&&<p role="alert">{error} — ไม่แสดงหรือส่งออกรายงานบางส่วน</p>}
     {data&&<><p className="inv-muted">ข้อมูลที่โหลดเมื่อ {new Date(data.capturedAt).toLocaleString('th-TH')} · หากมีงานระหว่างโหลด ให้โหลดใหม่ก่อนใช้ปิดยอด</p>
+      {tab==='dashboard'&&<InventoryCategoryCards data={data} role={role} from={from} to={to} Table={ReportTable}/>}
       {data.mismatches.length>0&&<p role="alert">ยอดสรุปและรายละเอียดไม่ตรงกัน อาจมีรายการใหม่ระหว่างโหลด หยุดส่งออกและโหลดใหม่ หากยังไม่ตรงให้ตรวจสอบ: {data.mismatches.join(', ')}</p>}
       {role==='admin'&&<div className="inv-filters"><label>ค้นหาออเดอร์ / รุ่น<input value={search} onChange={e=>setSearch(e.target.value)}/></label><label>สถานะ<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">ทั้งหมด</option>{Object.entries(WORKFLOW_LABELS).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label></div>}
       {tab==='dashboard'&&<>{role==='purchasing'&&<p>บัญชีการใช้วัตถุดิบตามหมวดไม่แสดงข้อมูลลูกค้า/คำขอ และไม่สมมติจำนวนออเดอร์จากยอดเบิก</p>}{role==='admin'&&<>

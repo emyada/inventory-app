@@ -1,0 +1,9 @@
+.canonical-reports { min-width: 0; }
+.canonical-reports .inv-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+.canonical-reports label { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.canonical-reports .inv-subnav { display:flex; flex-wrap:wrap; gap:6px; margin:16px 0; }
+.canonical-reports .inv-table-scroll { max-width:100%; overflow-x:auto; }
+.canonical-reports td { overflow-wrap:anywhere; }
+.canonical-reports details { margin:16px 0; }
+.canonical-reports aside { border-left:3px solid #e4b65c; padding:12px; }
+@media(max-width:600px) { .inventory-v2 .canonical-reports .inv-filters { display:flex; flex-direction:column; align-items:stretch; } .inventory-v2 .canonical-reports .inv-filters>label { flex:none; width:100%; } .canonical-reports input,.canonical-reports select { width:100%; box-sizing:border-box; } .canonical-reports button { min-height:44px; } }

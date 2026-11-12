@@ -37,3 +37,17 @@ input[type="date"] { color-scheme: dark; }
   }
 
 }
+
+/* Remove double-tap delay/zoom without disabling pinch zoom. */
+html { touch-action: manipulation; }
+@media (max-width: 600px) {
+  input, select, textarea { font-size: 16px !important; }
+  .inventory-v2 small, .inventory-v2 .inv-muted { font-size: .875rem; }
+}
+.inv-refresh-root { overscroll-behavior-y: contain; height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+.inv-refresh-root > .inventory-v2 { flex:1; min-height:0; }
+.inv-refresh-status { text-align: center; color: #EDEAE2; background: #16181C; font-size: 14px; }
+.inv-refresh-status:empty { display: none; }
+.inv-refresh-status { flex-shrink:0; }
+
+html:has(.inv-refresh-root) { overscroll-behavior-y: contain; }

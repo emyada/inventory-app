@@ -3,18 +3,7 @@ import { Package } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { C, sans, inputStyle, btnPrimary } from '../theme';
 
-// Staff never see or type an email — they just use a short username.
-// Behind the scenes, Supabase Auth still requires an email-shaped identifier,
-// so we turn "somchai" into "somchai@iem-workshop.local" before signing in.
-// When you (admin) create a login in Supabase > Authentication > Users, use
-// that same "username@iem-workshop.local" pattern as the email field.
-const USERNAME_DOMAIN = 'iem-workshop.local';
-
-function usernameToEmail(input) {
-  const clean = input.trim().toLowerCase().replace(/\s+/g, '');
-  if (clean.includes('@')) return clean; // already a full email (e.g. an older account) — use as typed
-  return `${clean}@${USERNAME_DOMAIN}`;
-}
+import { loginAlias } from '../lib/loginAlias.js';
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -27,9 +16,11 @@ export default function Login() {
     e.preventDefault();
     if (!username.trim()) return;
     setBusy(true); setError('');
-    const { error } = await signIn(usernameToEmail(username), password);
-    if (error) setError(`เข้าสู่ระบบไม่สำเร็จ: ${error.message}`);
-    setBusy(false);
+    try {
+      const email = loginAlias(username);
+      if (!email || (await signIn(email, password)).error) setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    } catch { setError('เชื่อมต่อไม่ได้ กรุณาลองอีกครั้ง'); }
+    finally { setBusy(false); }
   }
 
   return (

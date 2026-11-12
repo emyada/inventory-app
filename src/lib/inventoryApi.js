@@ -12,15 +12,21 @@ export const mutationParameters = Object.freeze({
   receive_purchase_batch: 'lines supplier_source document_type po_number invoice_number document_date note',
   stocktake: 'material_id counted_qty reason expected_version',
   create_request: 'model_id order_ref repair_spec',
+  create_request_v2: 'model_id order_ref repair_spec work_mode',
+  set_model_prefix: 'model_id prefix expected_revision reason',
   confirm_pick: 'items',
   cancel_request: 'transaction_id reason legacy_return_verified',
   close_not_completed: 'transaction_id reason returns',
   issue_finished: 'packing_request_id quantity reference note',
   save_model: 'model_id name category bom',
+  save_model_audited: 'model_id name category bom reason expected_bom',
   set_model_active: 'model_id is_active reason',
 });
 export const readParameters = Object.freeze({
+  bom_history: 'model_id',
   request_policy: '',
+  request_reference_settings: '',
+  reference_history: 'reference category',
   get_operation_result: 'operation_id',
   purchase_category_usage_report: 'date_from date_to after_sequence cutoff_sequence limit',
   list_finished_stock: '',
@@ -48,6 +54,11 @@ export function createInventoryApi(client, { uuid, operationStore, mutationsEnab
     return rpcData(result,{mutation:Object.hasOwn(mutationParameters,name)});
   }
   const api = {};
+  // Separate read-only reporting contract; existing inventory RPCs stay unchanged.
+  api.reporting_read_evidence = (args) => {
+    assertAccess();
+    return client.rpc('reporting_read_evidence_v1', args);
+  };
   for (const [name, allowed] of Object.entries(mutationParameters)) {
     // Preparing is local only. execute()/retry() is the sole network entry point.
     api[name] = (input, { intentKey = name } = {}) => {

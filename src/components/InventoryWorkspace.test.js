@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {createServer} from 'vite';
+import {readFileSync} from 'node:fs';
 // Entire UI module graph is compiled, but authentication/network are unavailable.
 test('offline component render: role navigation, report detail and modal contracts',async()=>{
  const originalFetch=globalThis.fetch;let network=0;globalThis.fetch=()=>{network++;throw new Error('Network forbidden in component test');};
@@ -19,6 +20,17 @@ test('offline component render: role navigation, report detail and modal contrac
   const chips=renderToStaticMarkup(React.createElement(OrderChips,{values:['SLP-01','SLP-02'],draft:'',reviewed:false,onChange:()=>{},onDraftChange:()=>{},onReviewedChange:()=>{}}));
   assert.ok(chips.includes('Remove SLP-01'));assert.ok(chips.includes('Remove SLP-02'));assert.ok(chips.includes('enterKeyHint="done"'));assert.ok(chips.includes('type="checkbox"'));assert.ok(!chips.includes('<textarea'));
   const {ReportTable}=await server.ssrLoadModule('/src/components/InventoryReports.jsx');
+  const {InventoryCategoryCards}=await server.ssrLoadModule('/src/components/InventoryCategoryCards.jsx');
+  const reportSource=readFileSync(new URL('./InventoryReports.jsx',import.meta.url),'utf8');
+  assert.match(reportSource,/tab==='dashboard'&&<InventoryCategoryCards/);
+  assert.match(reportSource,/<CanonicalReports api=\{api\}/);
+  const emptyReport={requests:[],movements:[],balances:[],categoryUsage:[]};
+  for(const role of ['admin','purchasing']) {
+   const cards=renderToStaticMarkup(React.createElement(InventoryCategoryCards,{data:emptyReport,role,from:'2026-10-01',to:'2026-10-31',Table:ReportTable}));
+   assert.ok(cards.includes('สรุปหมวดและรายละเอียด'));assert.ok(cards.includes('สำรวจตามหมวด'));
+   assert.ok(cards.includes('CIEM'));assert.ok(cards.includes('Sleepplug'));
+   assert.equal(cards.includes('0 คำขอ'),role==='admin');
+  }
   const table=renderToStaticMarkup(React.createElement(ReportTable,{rows:[{model_name:'Historical model',required_qty:'0.25'}],columns:[['model_name','Model'],['required_qty','Requirement']]}));
   assert.ok(table.includes('Historical model'));assert.ok(table.includes('0.25'));
   const {InventoryManagementForm}=await server.ssrLoadModule('/src/components/InventoryManagementForm.jsx');
@@ -40,9 +52,20 @@ test('offline component render: role navigation, report detail and modal contrac
   const config=renderToStaticMarkup(React.createElement(InventoryManagementForm,{task:{kind:'create_material'},api:{},role:'admin',catalog:{},onClose:()=>{},onSuccess:()=>{}}));
   assert.ok(config.includes('ต้องหยิบ/ยืนยันโดยหัวหน้า'));assert.ok(config.includes('ตัดใช้ตาม BOM อัตโนมัติ'));assert.ok(config.includes('ไม่แก้ BOM Snapshot'));
   const {InventoryWorkflowForm}=await server.ssrLoadModule('/src/components/InventoryWorkflowForm.jsx');
-  const mk=(id,qty,auto=false)=>({id,order_ref:id,lines:[{line_id:id,material_id:auto?'auto':'manual',material_name:auto?'Automatic hidden':'Driver grouped',unit:'pcs',qty,requires_picking:!auto,picked:false}]});
-  const pick=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{task:{kind:'pick',rows:[mk('one',2),mk('two',3),mk('auto',4,true)]},api:{},role:'admin',profile:{},onClose:()=>{},onSuccess:()=>{}}));
-  assert.equal((pick.match(/type="checkbox"/g)||[]).length,1);assert.ok(pick.includes('Driver grouped'));assert.ok(pick.includes('5'));assert.ok(pick.includes('2'));assert.ok(pick.includes('one'));assert.ok(pick.includes('two'));assert.ok(!pick.includes('Automatic hidden'));
+  const mk=(id,qty,auto=false)=>{const lines=[{line_id:id,material_id:auto?'auto':'manual',material_name:auto?'Automatic material':'Manual material',unit:'pcs',qty,requires_picking:!auto,picked:false}];return {id,order_ref:id,model_name:'Model '+id,confirmation_contract:'admin-whole-order-v1',bom_snapshot:lines,lines};};
+  const rows=[mk('one',2),mk('two',3),mk('auto',4,true)];
+  const props={task:{kind:'pick',rows},api:{list_materials:()=>assert.fail('SSR must not read'),confirm_pick:()=>assert.fail('Render must never submit')},profile:{},onClose:()=>{},onSuccess:()=>{}};
+  const pick=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{...props,role:'admin'}));
+  assert.match(pick,/Admin ยืนยันตัดสต็อกต่อออเดอร์/);
+  assert.equal((pick.match(/<select/g)||[]).length,1);
+  assert.doesNotMatch(pick,/type="checkbox"|<select[^>]*multiple/);
+  for(const row of rows)assert.ok(pick.includes(`value="${row.id}"`));
+  assert.match(pick,/<button disabled="">ยืนยันทั้งออเดอร์<\/button>/);
+  assert.match(pick,/กำลังตรวจยอด/);
+  for(const role of ['staff','purchasing']) {
+   const deniedPick=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{...props,role}));
+   assert.match(deniedPick,/เฉพาะ Admin/);assert.doesNotMatch(deniedPick,/<select|<button|type="checkbox"/);
+  }
 
   for(const category of ['CIEM','Tactical','Lifestyle','Sleepplug','Universal']){
    const normal=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{task:{kind:'create',model:{id:'model',name:'Selected',category}},api:{},role:'staff',profile:{},onClose:()=>{},onSuccess:()=>{}}));
@@ -53,6 +76,16 @@ test('offline component render: role navigation, report detail and modal contrac
   const repair=renderToStaticMarkup(React.createElement(InventoryWorkflowForm,{task:{kind:'create',repair:true},api:{},role:'staff',profile:{},onClose:()=>{},onSuccess:()=>{}}));
   assert.ok(repair.includes('ซ่อมและอื่นๆ'));assert.ok(repair.includes('เพิ่มวัตถุดิบ'));assert.ok(!repair.includes('เพิ่มหลายออเดอร์พร้อมกัน'));
   const {RequestsPanel,SupervisorRequests}=await server.ssrLoadModule('/src/components/InventoryWorkspacePanels.jsx');
+  const {MaterialsPanel}=await server.ssrLoadModule('/src/components/InventoryWorkspacePanels.jsx');
+  for(const role of ['admin','purchasing']) {
+   const stock=renderToStaticMarkup(React.createElement(MaterialsPanel,{api:{},role,revision:0,onAction:()=>{}}));
+   assert.ok(stock.includes('คลังวัตถุดิบ'));
+   assert.ok(stock.includes('เครื่องคำนวณจำลอง Using / Used (ไม่เปลี่ยนสต็อก)'));
+   assert.ok(stock.includes('aria-label="เครื่องคำนวณจำลองสต็อก"'));
+   assert.ok(stock.includes('Used: ใช้ไปแล้ว ไม่บวกกลับ'));
+  }
+  const staffStock=renderToStaticMarkup(React.createElement(MaterialsPanel,{api:{},role:'staff',onAction:()=>{}}));
+  assert.ok(!staffStock.includes('aria-label="เครื่องคำนวณจำลองสต็อก"'));
   const staffPage=renderToStaticMarkup(React.createElement(RequestsPanel,{api:{},role:'staff',userId:'s',onAction:()=>{}}));
   assert.ok(staffPage.includes('งานที่ยังไม่เสร็จ'));assert.ok(staffPage.includes('ประวัติคำขอ'));assert.ok(!staffPage.includes('<select'));assert.ok(!staffPage.includes('type="date"'));
   const supervisor=renderToStaticMarkup(React.createElement(SupervisorRequests,{api:{},role:'admin',userId:'a',onAction:()=>{}}));

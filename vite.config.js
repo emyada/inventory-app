@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: { navigateFallbackDenylist: [/^\/api\//] },
       manifest: {
         name: 'IEM Workshop Inventory',
         short_name: 'IEM Stock',

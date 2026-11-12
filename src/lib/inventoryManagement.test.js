@@ -12,8 +12,9 @@ const inputs={
  update_material:{name:' Edit ',unit:'pcs',qty:'999',low_stock_threshold:'2',requires_picking:false},
  set_material_active:{is_active:false,reason:'archive'},
  receive_purchase:{quantity:'0.25',reference:'PO-test',note:'synthetic'},
+ receive_purchase_v21:{quantity:'0.25',supplier_source:'Synthetic shop',document_type:'none',po_number:'',invoice_number:'',note:'synthetic'},
  stocktake:{counted_qty:'9.5',expected_version:999,reason:'counted'},
- save_model:{name:'Model',category:'CIEM',is_active:true,bom:[{material_id:M,qty:'0.50',picked:true,received:true,id:U}]},
+ save_model:{reason:'Reviewed BOM change',expected_bom:[],name:'Model',category:'CIEM',is_active:true,bom:[{material_id:M,qty:'0.50',picked:true,received:true,id:U}]},
  set_model_active:{is_active:false,reason:'archive model'},
 };
 const makeSubmission=(api,kind,extras={})=>createManagementSubmission({api,kind,input:inputs[kind],row,role:'admin',loadMaterial:async()=>row,confirm:async()=>true,...extras});
@@ -21,7 +22,7 @@ for(const kind of managementKinds){
  test(kind+': success uses RPC allowlisted payload only',async()=>{
   const calls=[];const api=createInventoryApi({rpc:async(name,args)=>{calls.push({name,args});return{data:{ok:true,pending_request_count:2}};}},{uuid:()=>O});
   const command=makeSubmission(api,kind);assert.deepEqual(await command.execute(),{ok:true,pending_request_count:2});
-  assert.equal(calls.length,1);assert.equal(calls[0].name,'inventory_'+kind);assert.equal(calls[0].args.p_operation_id,O);
+  assert.equal(calls.length,1);assert.equal(calls[0].name,'inventory_'+(kind==='save_model'?'save_model_audited':kind));assert.equal(calls[0].args.p_operation_id,O);
   assert.ok(!('p_qty' in calls[0].args));assert.ok(!('p_status' in calls[0].args));
   if(kind==='stocktake'){assert.equal(calls[0].args.p_expected_version,'7');assert.equal(calls[0].args.p_counted_qty,'9.5');}
   if(kind==='update_material'){assert.equal(calls[0].args.p_unit,'pcs');assert.ok(!('p_initial_qty' in calls[0].args));}
@@ -29,7 +30,7 @@ for(const kind of managementKinds){
  });
  test(kind+': permissions enforce admin/staff/purchasing before any IO',async()=>{
   for(const role of ['admin','staff','purchasing','unknown']){
-   const allowed=role==='admin'||(role==='purchasing'&&kind==='receive_purchase');
+   const allowed=role==='admin'||(role==='purchasing'&&['receive_purchase','receive_purchase_v21'].includes(kind));
    if(allowed)assert.doesNotThrow(()=>managementPayload(kind,inputs[kind],role,row));
    else{
     const cmd=makeSubmission({},kind,{role,loadMaterial:()=>assert.fail('read before permission')});
@@ -87,7 +88,7 @@ function memoryStorage(){const data=new Map();return {get length(){return data.s
 for(const kind of managementKinds){
  test(kind+': response lost + reload uses original UUID; committed lookup does not repeat mutation',async()=>{
   let writes=0,lookupState='not_found',ids=0;const calls=[];const storage=memoryStorage();
-  const dbKind={set_material_active:'archive_material',receive_purchase:'purchase'}[kind]||kind;
+  const dbKind={set_material_active:'archive_material',receive_purchase:'purchase',receive_purchase_v21:'purchase'}[kind]||kind;
   const client={rpc:async(name,args)=>{
    calls.push({name,args:structuredClone(args)});
    if(name==='inventory_get_operation_result')return {data:{found:lookupState==='completed',completed:lookupState==='completed',kind:dbKind,result:{ok:true,pending_request_count:3}}};
@@ -131,9 +132,11 @@ test('model catalog reads all pages/inactive models and BOM; no mutation methods
  assert.equal((await catalog.listModels()).length,100);await catalog.loadBom(M);
  assert.equal(calls[0].filter,undefined);assert.deepEqual(calls[2].filter,['model_id',M]);assert.equal(calls[1].range[0],100);
 });
-test('B2b entry is behind V2; legacy App unchanged; new UI has no table mutation fallback',()=>{
+test('legacy workspace unchanged; auth boundary tested separately; new UI has no table mutation fallback',()=>{
  const base=JSON.parse(readFileSync('docs/inventory-migration-drafts/REACT_B2B_BASELINE.json','utf8'));
- assert.equal(readFileSync('src/App.jsx','utf8').replaceAll('\r\n','\n'),base['src/App.jsx']);
+ const app=readFileSync('src/App.jsx','utf8').replaceAll('\r\n','\n');
+ const workspace=source=>{const start=source.indexOf('function Workspace(');assert.ok(start>=0);return source.slice(start);};
+ assert.equal(workspace(app),workspace(base['src/App.jsx']));
  for(const path of ['src/components/InventoryManagementForm.jsx','src/components/InventoryModelsPanel.jsx','src/lib/inventoryManagement.js','src/lib/inventoryManagementCatalog.js']){
   const code=readFileSync(path,'utf8');assert.ok(!/\.(insert|update|upsert|delete)\s*\(/.test(code));assert.ok(!/received/.test(code));
  }
@@ -144,3 +147,9 @@ test('B2b entry is behind V2; legacy App unchanged; new UI has no table mutation
 function createInventoryApi(client,options={}) {return apiFactory(client,{mutationsEnabled:true,...options});}
 
 function createRecoveryInventory(client,options={}) {return recoveryFactory(client,{mutationsEnabled:true,...options});}
+
+test('BOM audit requires reason and expected snapshot before allocating operation',async()=>{
+ for(const input of [{...inputs.save_model,reason:''},{...inputs.save_model,expected_bom:undefined}]){
+ const cmd=makeSubmission({save_model_audited(){assert.fail('must not prepare write');}},'save_model',{input});await assert.rejects(cmd.execute());assert.equal(cmd.operation,null);
+ }
+});

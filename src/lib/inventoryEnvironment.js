@@ -2,7 +2,7 @@ export function inventoryEnvironmentPolicy(env = {}) {
   const v2Enabled=env.VITE_INVENTORY_V2_ENABLED==='true';
   const mutationsEnabled=env.VITE_INVENTORY_MUTATIONS_ENABLED==='true';
   const environmentName=env.VITE_INVENTORY_ENVIRONMENT || env.MODE || 'staging';
-  const environmentLabel=environmentName==='production'?'PRODUCTION':environmentName==='staging'?'STAGING':'LOCAL';
+  const environmentLabel=environmentName==='production'?'PRODUCTION':environmentName==='staging'?'STAGING':environmentName==='preview'?'PREVIEW':'LOCAL';
   let projectRef=null,error=null;
   if(!env.VITE_SUPABASE_URL?.trim() || !env.VITE_SUPABASE_ANON_KEY?.trim()) error='Supabase configuration missing; application blocked';
   if(v2Enabled){

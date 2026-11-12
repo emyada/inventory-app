@@ -85,7 +85,11 @@ export function createManagementSubmission({api,kind,input,role,row,loadMaterial
       }
       const payload=managementPayload(kind,original,role,latest);
       if(needsManagementConfirmation(kind,observed) && !await confirm({kind,payload,row:latest})) return {cancelled:true};
-      operation=api[kind](payload);onPrepared(operation);return operation.execute();
+      if(kind==='save_model'){
+        const reason=text(original.reason,'เหตุผลแก้ BOM');
+        if(!Array.isArray(original.expected_bom))throw new Error('ต้องโหลด BOM audit contract ก่อนบันทึก');
+        operation=api.save_model_audited({...payload,reason,expected_bom:original.expected_bom});
+      }else operation=api[kind](payload);onPrepared(operation);return operation.execute();
     }).catch(async error=>{
       if(kind==='stocktake' && isStaleStock(error)) {
         try {onLatest(await loadMaterial(observed.id));}catch(reloadError){error.reloadError=reloadError;}
