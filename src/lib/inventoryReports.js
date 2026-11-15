@@ -2,7 +2,7 @@
 export const PRODUCT_CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'Universal'];
 export const WORKFLOW_LABELS = {legacy_completed_shipped:'Completed/shipped (legacy attestation)',pending:'รอหยิบ', partially_picked:'หยิบบางส่วน', completed:'เบิกครบแล้ว', cancelled:'ยกเลิกแล้ว', production_not_completed:'ผลิตไม่สำเร็จ / คืนแล้ว'};
 export const MOVEMENT_LABELS = {opening_balance:'ยอดตั้งต้นเพิ่มเติม',purchase:'รับเข้า',production_issue:'เบิกออก',cancellation_return:'คืนจากการยกเลิก',stocktake_adjustment_in:'ปรับเพิ่มจากการนับ',stocktake_adjustment_out:'ปรับลดจากการนับ'};
-export const workspaceTabs = role => role==='admin' ? ['floor','requests','materials','report'] : role==='staff' ? ['floor','requests'] : role==='purchasing' ? ['materials','report'] : [];
+export const workspaceTabs = role => role==='admin' ? ['floor','requests','materials','store','report'] : role==='staff' ? ['floor','requests'] : role==='purchasing' ? ['materials','report'] : role==='store' ? ['store'] : [];
 function parts(value) {
   const match=/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
   if(!match) throw new Error('ข้อมูลจำนวนไม่ถูกต้อง ไม่สามารถสรุปรายงานได้');

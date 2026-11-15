@@ -44,7 +44,7 @@ export function ManagedAccounts() {
       <form key={id} onSubmit={submit}>
         {!selected&&<label>ชื่อผู้ใช้ <input name="username" required maxLength={64} autoCapitalize="none"/></label>}
         <label>ชื่อแสดงผล <input name="name" required maxLength={120} defaultValue={selected?.full_name}/></label>
-        <label>สิทธิ์ <select name="role" defaultValue={selected?.role||'staff'}>{['staff','admin','purchasing'].map(r=><option key={r}>{r}</option>)}</select></label>
+        <label>สิทธิ์ <select name="role" defaultValue={selected?.role||'staff'}>{['staff','admin','purchasing','store'].map(r=><option key={r} value={r}>{({staff:'staff — ทีมผลิต',admin:'admin — หัวหน้าสต๊อก',purchasing:'purchasing — จัดซื้อ',store:'store — พนักงานหน้าร้าน'})[r]}</option>)}</select></label>
         <label>รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร ใช้ตัวเลขได้) <input name="password" type="password" autoComplete="new-password" required={!selected} minLength={8} maxLength={128}/></label>
         <button value={selected?'edit':'create'}>{selected?'บันทึกชื่อและสิทธิ์':'สร้างบัญชี'}</button>
         {selected&&<><button value="reset">ตั้งรหัสผ่านใหม่</button><button type="button" onClick={()=>void run({action:selected.enabled?'disable':'enable',id})}>{selected.enabled?'ระงับบัญชี':'เปิดใช้บัญชี'}</button></>}

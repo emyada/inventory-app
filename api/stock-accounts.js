@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loginAlias } from '../src/lib/loginAlias.js';
 
-const roles = ['staff', 'admin', 'purchasing'];
+const roles = ['staff', 'admin', 'purchasing', 'store'];
 export function accountEndpoint(env, connect = createClient) {
   return async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');

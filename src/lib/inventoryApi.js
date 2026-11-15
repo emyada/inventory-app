@@ -22,6 +22,11 @@ export const mutationParameters = Object.freeze({
   save_model: 'model_id name category bom',
   save_model_audited: 'model_id name category bom reason expected_bom',
   set_model_active: 'model_id is_active reason',
+  store_transfer: 'lines note',
+  store_create_sale: 'tag lines',
+  store_add_sale_lines: 'sale_id lines',
+  store_cancel_sale: 'sale_id reason',
+  store_adjust: 'item_kind item_id counted_qty reason',
 });
 export const readParameters = Object.freeze({
   bom_history: 'model_id',
@@ -37,6 +42,10 @@ export const readParameters = Object.freeze({
   list_pick_queue: 'after_at after_id limit',
   balance_report: 'date_from date_to timezone',
   list_movements: 'material_id from to after_sequence cutoff_sequence limit',
+  store_list_stock: '',
+  store_list_sales: 'date_from date_to timezone limit',
+  store_report: 'date_from date_to timezone',
+  combined_balance: '',
 });
 function parameters(allowed, input) {
   if (!input || Array.isArray(input) || typeof input !== 'object') throw new Error('RPC input must be an object');
