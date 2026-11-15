@@ -295,7 +295,7 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
 
 /* ---------------- Workspace shell ---------------- */
 export function StoreWorkspace({api, role, userId, revision, onChanged, actionBusy}) {
-  const modes = role === 'store' ? [['sell', 'ขาย'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย']];
+  const modes = role === 'store' ? [['sell', 'ขาย'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['report', 'รายงาน']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย'], ['report', 'รายงาน']];
   const [mode, setMode] = useState(modes[0][0]);
   const [transfer, setTransfer] = useState(false);
   return <>
@@ -303,6 +303,7 @@ export function StoreWorkspace({api, role, userId, revision, onChanged, actionBu
     {mode === 'sell' && <StoreSell api={api} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={() => setTransfer(true)}/>}
     {mode === 'sales' && <StoreSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    {mode === 'report' && <StoreReports api={api} role={role} revision={revision}/>}
     {transfer && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="โอนของไปหน้าร้าน">
       <StoreTransferForm api={api} onClose={() => setTransfer(false)} onSuccess={onChanged}/></div></div>}
   </>;
@@ -311,21 +312,23 @@ export function StoreWorkspace({api, role, userId, revision, onChanged, actionBu
 /* ---------------- Reports: storefront + combined balance (admin / purchasing) ---------------- */
 const storeReportColumns = [['name', 'รายการ'], ['kind_label', 'ประเภท'], ['unit', 'หน่วย'], ['opening', 'ต้นงวด'], ['transfer_in', 'รับจากคลังหลัก'], ['sold', 'ขาย'], ['sale_cancelled', 'ยกเลิกขาย (คืน)'], ['adjust_in', 'ปรับเพิ่ม'], ['adjust_out', 'ปรับลด'], ['closing', 'คงเหลือ']];
 const combinedColumns = [['name', 'วัตถุดิบ'], ['unit', 'หน่วย'], ['main_qty', 'คลังหลัก'], ['store_qty', 'หน้าร้าน'], ['total_qty', 'รวมจริง'], ['low_stock_threshold', 'จุดเตือน'], ['flag', 'สถานะ']];
-export function StoreReports({api, revision}) {
+export function StoreReports({api, role, revision}) {
+  const showCombined = role !== 'store'; // storefront staff never read main-stock balances
   const today = localDay(new Date());
   const [from, setFrom] = useState(today.slice(0, 8) + '01');
   const [to, setTo] = useState(today);
   const report = useStoreRead(() => api.store_report({date_from: from, date_to: to, timezone: 'Asia/Bangkok'}), revision, [from, to]);
-  const combined = useStoreRead(() => api.combined_balance(), revision);
+  const combined = useStoreRead(() => (showCombined ? api.combined_balance() : Promise.resolve(null)), revision, [showCombined]);
   const items = useMemo(() => (report.data?.items || []).map(r => ({...r, kind_label: r.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'})), [report.data]);
   const mats = useMemo(() => (combined.data?.materials || []).map(m => ({...m, flag: Number(m.total_qty) <= Number(m.low_stock_threshold) ? 'ใกล้หมด — ควรสั่ง' : ''})), [combined.data]);
   const sets = combined.data?.store_sets || [];
   return <section className="store-reports">
-    <h2>รายงานหน้าร้าน และยอดรวมสำหรับสั่งของ</h2>
+    <h2>{showCombined ? 'รายงานหน้าร้าน และยอดรวมสำหรับสั่งของ' : 'รายงานหน้าร้าน'}</h2>
     <div className="inv-filters">
       <label>ตั้งแต่<input type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)}/></label>
       <label>ถึง<input type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)}/></label>
     </div>
+    {showCombined && <>
     <h3>ยอดรวมจริง (คลังหลัก + อะไหล่หน้าร้าน) ณ ตอนนี้</h3>
     <p className="inv-muted">ใช้สำหรับสั่งของ — ชุดสำเร็จรูปที่ค้างหน้าร้านถูกตัดวัตถุดิบไปแล้วตอนโอน จึงไม่ถูกนับซ้ำ</p>
     <ReadNote state={combined}/>
@@ -333,6 +336,7 @@ export function StoreReports({api, revision}) {
       <button type="button" disabled={!mats.length} onClick={() => downloadCSV(`combined_balance_${today}.csv`, reportCSV(mats, combinedColumns, {as_of: today}))}>ส่งออกยอดรวม CSV</button>
       <ReportTable rows={mats} columns={combinedColumns}/>
       {sets.length > 0 && <><h3>ชุดสำเร็จรูปที่ค้างหน้าร้าน</h3><ReportTable rows={sets} columns={[['name', 'รุ่น'], ['category', 'หมวด'], ['store_sets', 'จำนวนชุด']]}/></>}
+    </>}
     </>}
     <h3>ความเคลื่อนไหวหน้าร้านในช่วงที่เลือก</h3>
     <ReadNote state={report}/>
