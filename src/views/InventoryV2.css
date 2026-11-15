@@ -348,3 +348,17 @@
 .mr-warn { background: #FEF3E2; border-color: #F3D9A8; }
 .mr-warn h3 { color: #92400E; }
 .inventory-v2 .mr-download { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; }
+
+/* Mobile: stop the page sliding left/right. iOS Safari gives date inputs an intrinsic width that
+   ignores width:100%, so reset it, let grid/flex children shrink, and clip any stray overflow. */
+.inventory-v2 { overflow-x: clip; max-width: 100%; }
+.inventory-v2 input[type="date"], .inventory-v2 input[type="month"], .inventory-v2 input[type="datetime-local"] {
+  -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; box-sizing: border-box;
+}
+.inventory-v2 input, .inventory-v2 select, .inventory-v2 textarea { box-sizing: border-box; }
+.inventory-v2 .inv-filters > * { min-width: 0; }
+@media (max-width: 600px) {
+  .inventory-v2 .canonical-reports .inv-filters label:nth-child(n+3),
+  .inventory-v2 .canonical-reports .inv-filters button { grid-column: 1 / -1; }
+  .inventory-v2 .canonical-reports .inv-subnav { flex-wrap: wrap; }
+}
