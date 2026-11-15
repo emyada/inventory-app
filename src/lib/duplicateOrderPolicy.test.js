@@ -12,9 +12,9 @@ test('approved unsupported fallback preserves punctuation, letters and numeric d
  assert.equal(duplicateIssueDecision({...request,order_ref:'Job-001'},[{...prior,order_ref:'Job-001',issued_at:null}]).status,'allowed');
 });
 test('supported numeric prefixes, leading zeros and arbitrary precision; unknown formats not guessed',()=>{
- for(const value of ['Z0001','ZG1','PL01','PN1','0001',' zg0001 '])assert.equal(numericOrderKey(value),'1');
+ for(const value of ['Z0001','ZG1','PL01','PN1','0001',' zg0001 ','AB1','CL0001'])assert.equal(numericOrderKey(value),'1');
  assert.equal(numericOrderKey('PN99999999999999999999999'),'99999999999999999999999');
- for(const value of ['AB1','Z1-2','PN-1','1.2','customer 1',null,''])assert.equal(numericOrderKey(value),null);
+ for(const value of ['ABCDEFG1','Z1-2','PN-1','1.2','customer 1',null,''])assert.equal(numericOrderKey(value),null);
 });
 test('same parent blocks; unrelated parent allows same numeric reference',()=>{
  assert.equal(duplicateIssueDecision(request,[prior]).status,'duplicate');

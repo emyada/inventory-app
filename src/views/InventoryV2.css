@@ -362,3 +362,4 @@
   .inventory-v2 .canonical-reports .inv-filters button { grid-column: 1 / -1; }
   .inventory-v2 .canonical-reports .inv-subnav { flex-wrap: wrap; }
 }
+.inventory-v2 .inv-filters input[type="date"] { width: 100%; min-width: 0; display: block; }

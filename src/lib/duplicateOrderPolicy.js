@@ -1,7 +1,7 @@
 // Offline policy oracle for the proposed backend contract. Never a client-side authorization gate.
 export function numericOrderKey(reference) {
  if(typeof reference!=='string')return null;
- const match=/^(?:ZG|PL|PN|Z)?([0-9]+)$/i.exec(reference.trim());
+ const match=/^(?:[A-Z]{1,6})?([0-9]+)$/i.exec(reference.trim());
  return match?match[1].replace(/^0+(?=\d)/,''):null;
 }
 export function duplicateIssueDecision(candidate,issued,{relationships=[]}={}) {
