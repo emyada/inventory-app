@@ -14,7 +14,7 @@ test('offline component render: role navigation, report detail and modal contrac
   for(const role of ['admin','staff','purchasing']){
    const html=renderToStaticMarkup(React.createElement(Workspace,{role,profile:{id:'offline',full_name:'Test user'},api:{},signOut:()=>{}}));
    assert.ok(html.includes('Test user'));assert.ok(html.includes('inv-bottom'));
-   const nav=html.slice(html.lastIndexOf('<nav'));assert.equal((nav.match(/<button/g)||[]).length,role==='admin'?4:2);
+   const nav=html.slice(html.lastIndexOf('<nav'));assert.equal((nav.match(/<button/g)||[]).length,role==='admin'?5:2);
   }
   const {OrderChips}=await server.ssrLoadModule('/src/components/OrderChips.jsx');
   const chips=renderToStaticMarkup(React.createElement(OrderChips,{values:['SLP-01','SLP-02'],draft:'',reviewed:false,onChange:()=>{},onDraftChange:()=>{},onReviewedChange:()=>{}}));

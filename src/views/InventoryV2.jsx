@@ -4,7 +4,8 @@ import './InventoryV2.css';
 import {useRequestPolicy,RequestPolicySwitch} from '../components/InventoryRequestPolicy.jsx';
 import {employeeMayCreate} from '../lib/inventoryRequestPolicy.js';
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Package, ListChecks, ClipboardList, Settings, LogOut, RefreshCw} from 'lucide-react';
+import {Package, ListChecks, ClipboardList, Settings, LogOut, RefreshCw, Store} from 'lucide-react';
+import {StoreWorkspace, StoreReports} from '../components/StoreWorkspace.jsx';
 import {InventoryModeBanner} from '../components/InventoryModeBanner.js';
 import {inventoryEnvironment} from '../lib/inventoryEnvironment.js';
 import {createUserInventory,createUserOpening} from '../lib/inventoryRpcClient.js';
@@ -19,8 +20,8 @@ import {normalInventoryEnabled} from '../lib/inventoryOpening.js';
 import {InventoryReports} from '../components/InventoryReports.jsx';
 import {managementKinds} from '../lib/inventoryManagement.js';
 import {workspaceTabs} from '../lib/inventoryReports.js';
-const labels={floor:'ผลิต',queue:'คิวหยิบ',materials:'คลัง',requests:'คำขอ',report:'รายงาน'};
-const icons={floor:Package,queue:ListChecks,materials:Settings,requests:ClipboardList,report:ClipboardList};
+const labels={floor:'ผลิต',queue:'คิวหยิบ',materials:'คลัง',requests:'คำขอ',store:'หน้าร้าน',report:'รายงาน'};
+const icons={floor:Package,queue:ListChecks,materials:Settings,requests:ClipboardList,store:Store,report:ClipboardList};
 export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
   const recovery=useMemo(()=>injectedApi?null:createUserInventory(profile.id),[injectedApi,profile.id]);
   const api=injectedApi||recovery.api;
@@ -37,7 +38,7 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
   const close=()=>{setTask(null);setRecoveryBlocked(Boolean(recovery));};
   const actionBusy=!mutationsEnabled||Boolean(task)||recoveryBlocked;
   return <MobileRefresh blocked={Boolean(task)||setupBusy} onRefresh={async()=>{try{setSetup(await opening.status());setSetupError('');}catch(e){setSetup(null);setSetupError('ไม่สามารถตรวจสถานะคลังได้ ปิดการทำรายการไว้ก่อน');throw e;}}}><main className="inventory-v2"><div className="inv-shell">
-    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p title={profile?.full_name}><span className="inv-user-name">{profile?.username || profile?.full_name} · </span>{role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':'พนักงาน'}</p></div></div><div className="inv-actions"><RefreshButton disabled={Boolean(task)||setupBusy}><RefreshCw size={18}/></RefreshButton><button aria-label="ออกจากระบบ" disabled={Boolean(task)||setupBusy} onClick={signOut}><LogOut size={18}/></button></div></header>
+    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p title={profile?.full_name}><span className="inv-user-name">{profile?.username || profile?.full_name} · </span>{role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':role==='store'?'พนักงานหน้าร้าน':'พนักงาน'}</p></div></div><div className="inv-actions"><RefreshButton disabled={Boolean(task)||setupBusy}><RefreshCw size={18}/></RefreshButton><button aria-label="ออกจากระบบ" disabled={Boolean(task)||setupBusy} onClick={signOut}><LogOut size={18}/></button></div></header>
     <InventoryModeBanner policy={inventoryEnvironment}/>
     <div className="inv-content">
     {role==='admin' && profile.enabled===true && inventoryEnvironment.mutationsEnabled && <ManagedAccounts/>}
@@ -52,7 +53,8 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
       {tab==='materials'&&['admin','purchasing'].includes(role)&&<><MaterialsPanel api={api} role={role} revision={revision} onAction={setTask} actionBusy={actionBusy}/></>}
       {tab==='requests'&&role==='staff'&&<RequestsPanel createBlocked={createBlocked} api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
       {tab==='requests'&&role==='admin'&&<SupervisorRequests api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
-      {tab==='report'&&['admin','purchasing'].includes(role)&&<InventoryReports api={api} role={role} revision={revision}/>}
+      {tab==='store'&&['admin','store'].includes(role)&&<StoreWorkspace api={api} role={role} userId={profile.id} revision={revision} onChanged={refresh} actionBusy={actionBusy}/>}
+      {tab==='report'&&['admin','purchasing'].includes(role)&&<><InventoryReports api={api} role={role} revision={revision}/><StoreReports api={api} revision={revision}/></>}
       {tab==='opening'&&role==='admin'&&<InventoryOpeningBalance api={opening} onChanged={refresh} onBusyChange={setSetupBusy}/>}
       {!tabs.includes(tab)&&!(tab==='opening'&&role==='admin')&&<p role="alert">ไม่มีสิทธิ์เปิดหน้านี้</p>}
     </div>
