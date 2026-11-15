@@ -12,6 +12,7 @@ import {manualPendingLines} from '../lib/inventoryV2Reads.js';
 import {canCloseNotCompleted} from '../lib/inventoryExtensions.js';
 import {filterRequests,employeeStatus} from '../lib/inventoryRequestUX.js';
 import {cancelEligibility} from '../lib/inventoryWorkflow.js';
+import {isUnfinished, unfinishedJobs, continuationOrder} from '../lib/unfinished.js';
 import {pendingWorkerGroups, UNASSIGNED_WORKER} from '../lib/inventoryRequestPresentation.js';
 function useRead(load,revision) {
   const [state,setState]=useState(null);
@@ -79,14 +80,22 @@ export function RequestsPanel({api,role,userId,queue=false,revision,onAction,act
     {queue&&<><p className="inv-muted">{rows.length} คำขอ · {round.length} วัตถุดิบ</p>{roundError&&<p role="alert">{roundError}</p>}
       <button className="inv-primary" disabled={role!=='admin'||actionBusy||state.busy||Boolean(state.error)||Boolean(roundError)||!round.length} onClick={()=>onAction({kind:'pick',rows})}>เลือกรอบหยิบ</button>
       <div className="inv-pick-summary">{round.map(g=><details key={g.material_id}><summary>{g.name} · {g.qty} {g.unit} · {g.order_count} คำขอ</summary>{g.lines.map(l=><p key={`${l.transaction_id}:${l.line_id}`}>{l.order_ref} · {l.qty} {g.unit}</p>)}</details>)}</div></>}
-    {queue||role==='admin'?<CompactRequestList rows={displayRows.slice(current*25,(current+1)*25)} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>
-      :<div className="grid-list">{displayRows.slice(current*25,(current+1)*25).map(r=><RequestCard key={r.id} r={r} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>)}</div>}
+    {queue||role==='admin'?<CompactRequestList allRows={state.rows} rows={displayRows.slice(current*25,(current+1)*25)} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>
+      :<div className="grid-list">{displayRows.slice(current*25,(current+1)*25).map(r=><RequestCard key={r.id} allRows={state.rows} r={r} queue={queue} employee={employee} view={view} role={role} userId={userId} actionBusy={actionBusy} onAction={onAction}/>)}</div>}
     {!state.busy&&!state.error&&!rows.length&&<p>ไม่มีคำขอในตัวกรองนี้</p>}
     {last>0&&<div className="inv-toolbar"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>หน้า {current+1}/{last+1}</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}
   </section>;
 }
 
-function RequestCard({r,queue,employee,view,role,userId,actionBusy,onAction,compact=false}) {
+function ContinueJob({r,role,actionBusy,onAction,all}) {
+  const job=unfinishedJobs([r,...(all||[]).filter(x=>x.id!==r.id)]).find(j=>j.id===r.id);
+  if(!['admin','staff'].includes(role)||!job)return null;
+  return <div className="inv-continue"><span className="inv-status production_not_completed">ยกไปเดือนหน้า</span>
+    {job.continued?<p>ทำต่อแล้วเมื่อ {job.continued.date} ({job.continued.order})</p>
+      :<button disabled={actionBusy} onClick={()=>onAction({kind:'create',model:{id:r.model_id,name:r.model_name,category:r.category},order_ref:continuationOrder(r.order_ref),continued_from:r.order_ref})}>ทำต่อเดือนใหม่</button>}
+  </div>;
+}
+function RequestCard({r,queue,employee,view,role,userId,actionBusy,onAction,compact=false,allRows=[]}) {
   return <article className={compact?'inv-request-detail':'inv-card'} id={compact?`request-detail-${r.id}`:undefined}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span>
       <details open={compact||undefined}><summary>รายละเอียดคำขอ</summary><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
       {!queue&&<><h4>วันที่เบิกจริง</h4>{(r.issue_times||[]).length?r.issue_times.map((at,i)=><p key={i}>{new Date(at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p>):<p>ไม่มีหลักฐานวันเบิกในบัญชี V2</p>}</>}
@@ -94,6 +103,7 @@ function RequestCard({r,queue,employee,view,role,userId,actionBusy,onAction,comp
       <h4>วัตถุดิบที่บันทึกไว้</h4>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</details>
       {!queue&&(!employee||view==='active')&&(cancelEligibility(r,role,userId)?<p className="inv-muted">{cancelEligibility(r,role,userId)}</p>:<button disabled={actionBusy} onClick={()=>onAction({kind:'cancel',row:r})}>{Number(r.picked_lines)>0?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'}</button>)}
       {!queue&&canCloseNotCompleted(r,role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'close_not_completed',row:r})}>ผลิตไม่สำเร็จ / คืนตามจริง</button>}
+      {isUnfinished(r)&&r.model_id&&<ContinueJob r={r} role={role} actionBusy={actionBusy} onAction={onAction} all={allRows}/>}
       {r.closure_kind==='production_not_completed'&&<div><p>ปิดงานแล้ว — ไม่รวมเป็นผลิตสำเร็จ</p>{(r.return_summary||[]).map(line=>{const b=r.bom_snapshot?.find(x=>x.line_id===line.line_id);return <p key={line.line_id}>{b?.material_name} · คืนจริง {line.returned_qty} · ใช้ไป/ไม่คืน {line.consumed_qty} {b?.unit}</p>;})}</div>}
     </article>;
 }

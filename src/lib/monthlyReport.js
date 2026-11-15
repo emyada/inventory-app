@@ -2,6 +2,7 @@
 // Pure functions: no network, no stock changes. Shapes follow the team's own
 // Excel workbook (ProductionReport / MaterialsReport / per-category sheets / repairs).
 import {PRODUCT_CATEGORIES, localDay} from './inventoryReports.js';
+import {unfinishedJobs} from './unfinished.js';
 
 export const REPAIR_CATEGORY = 'ซ่อมและอื่นๆ';
 // Requests in these states never count as produced.
@@ -82,7 +83,18 @@ export function buildMonthlyReport(requests, from, to) {
     const cur = usageAll.get(k) || {material: m.material, unit: m.unit, qty: 0};
     cur.qty = round(cur.qty + m.qty); usageAll.set(k, cur);
   }
+  // Jobs filed in this month that were closed as not completed; their stock movement is shown apart
+  // from production and never counts as material used. Also: filed but not yet picked.
+  const unfinished = unfinishedJobs(requests).filter(j => j.date >= from && j.date <= to);
+  const loss = new Map();
+  for (const j of unfinished) for (const l of j.lines) {
+    if (!l.consumed) continue;
+    const k = `${l.material}\u0000${l.unit}`; const cur = loss.get(k) || {material: l.material, unit: l.unit, qty: 0};
+    cur.qty = round(cur.qty + l.consumed); loss.set(k, cur);
+  }
+  const waitingPick = requests.filter(r => inPeriod(r) && ['pending', 'partially_picked'].includes(r.workflow_state)).length;
   return {
+    unfinished, unfinishedLoss: [...loss.values()].sort((a, b) => a.material.localeCompare(b.material)), waitingPick,
     from, to, production, materials, repairs, categories,
     totalPairs: production.reduce((a, p) => a + p.qty, 0), repairCount: repairs.length,
     materialsAll: [...usageAll.values()].sort((a, b) => a.material.localeCompare(b.material)),

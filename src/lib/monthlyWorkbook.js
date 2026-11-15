@@ -131,6 +131,19 @@ function logSheet(name, materialRows, {byModel = false, pairsRows = null, withRe
   }
   return {name, widths: [12, 8, 16, 24, 18, 40, 12, 8, 3, 40, 8, 12, 3, 26, 14], rows: out};
 }
+function unfinishedSheet(report) {
+  const rows = [['วันที่ยื่น', 'วันที่ปิด', 'หมวดหมู่', 'รุ่นสินค้า', 'ออเดอร์', 'ผู้เบิก', 'วัตถุดิบ', 'ตาม BOM', 'คืนเข้าสต็อก', 'ใช้ไป/ไม่คืน', 'หน่วย', 'ทำต่อแล้ว'].map(H)];
+  const loss = [];
+  for (const j of report.unfinished) {
+    const cont = j.continued ? `${j.continued.date} (${j.continued.order})` : 'ยัง';
+    const lines = j.lines.length ? j.lines : [{material: '-', unit: '', planned: 0, returned: 0, consumed: 0}];
+    for (const l of lines) rows.push([D(j.date), j.closed ? D(j.closed) : null, T(j.category), T(j.model), T(j.order), T(j.worker), T(l.material), N(l.planned), N(l.returned), N(l.consumed), T(l.unit), T(cont)]);
+  }
+  const mats = report.unfinishedLoss;
+  const out = rows.map((r, i) => [...r, null, ...(i === 0 ? [H('สูญเสียจากงานไม่เสร็จ'), H('หน่วย'), H('ใช้ไป/ไม่คืนรวม')] : mats[i - 1] ? [T(mats[i - 1].material), T(mats[i - 1].unit), F(`SUMIF($G:$G,N${i + 1},$J:$J)`, mats[i - 1].qty)] : [])]);
+  for (let i = rows.length; i <= mats.length; i++) out.push([...Array(12).fill(null), null, T(mats[i - 1].material), T(mats[i - 1].unit), F(`SUMIF($G:$G,N${i + 1},$J:$J)`, mats[i - 1].qty)]);
+  return {name: 'ไม่เสร็จ-ยกไปเดือนหน้า', widths: [12, 12, 14, 22, 14, 14, 36, 10, 14, 14, 8, 20, 3, 36, 8, 16], rows: out};
+}
 function stockSheet(stock, report) {
   const used = new Map();
   for (const m of report.materials) used.set(m.material, round((used.get(m.material) || 0) + m.qty));
@@ -169,6 +182,7 @@ export function buildMonthlyWorkbook(report, {stock = [], storeItems = null} = {
   if (report.repairs.length || report.materials.some(m => m.category === REPAIR_CATEGORY)) {
     sheets.push(logSheet('ซ่อมและอื่นๆ', report.materials.filter(m => m.category === REPAIR_CATEGORY), {withReason: true}));
   }
+  if (report.unfinished.length) sheets.push(unfinishedSheet(report));
   sheets.push(prod.sheet, rawMaterials(report));
   if (stock.length) sheets.push(stockSheet(stock, report));
   if (storeItems?.length) sheets.push(storeSheet(storeItems));
