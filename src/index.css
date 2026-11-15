@@ -51,3 +51,5 @@ html { touch-action: manipulation; }
 .inv-refresh-status { flex-shrink:0; }
 
 html:has(.inv-refresh-root) { overscroll-behavior-y: contain; }
+
+html { overflow-x: hidden; }

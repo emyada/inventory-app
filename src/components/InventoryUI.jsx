@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {X, Plus, MoreHorizontal} from 'lucide-react';
 import {decimal} from '../lib/inventoryManagement.js';
 
@@ -6,7 +6,15 @@ export function ModalHeader({title,onClose,busy=false}) {
  return <header className="inv-modal-header"><h2>{title}</h2><button type="button" className="inv-icon" aria-label="ปิด" title="ปิด" disabled={busy} onClick={onClose}><X size={20}/></button></header>;
 }
 export function Overflow({label,children}) {
- return <details className="inv-overflow"><summary aria-label={label} title={label}><MoreHorizontal size={20}/></summary><div className="inv-overflow-body">{children}</div></details>;
+ const ref=useRef(null);const [open,setOpen]=useState(false);
+ // Close when tapping anywhere else (including another card's menu), after choosing an item, or on Escape.
+ useEffect(()=>{if(!open)return undefined;
+  const outside=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+  const key=e=>{if(e.key==='Escape')setOpen(false);};
+  document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',key);
+  return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',key);};
+ },[open]);
+ return <details className="inv-overflow" ref={ref} open={open} onToggle={e=>setOpen(e.currentTarget.open)}><summary aria-label={label} title={label}><MoreHorizontal size={20}/></summary><div className="inv-overflow-body" onClick={e=>{if(e.target.closest('button'))setOpen(false);}}>{children}</div></details>;
 }
 export function BomEditor({materials,rows,onChange}) {
  const [materialId,setMaterialId]=useState(''),[quantity,setQuantity]=useState('1'),[error,setError]=useState('');
