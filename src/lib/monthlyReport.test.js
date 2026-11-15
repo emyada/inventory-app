@@ -51,3 +51,15 @@ test('low materials use the combined (main + store) total', () => {
   assert.deepEqual(lowMaterials({materials: [{name: 'A', unit: 'g', total_qty: '5', low_stock_threshold: '10'}, {name: 'B', unit: 'g', total_qty: '50', low_stock_threshold: '10'}]}),
     [{name: 'A', unit: 'g', total: 5, threshold: 10}]);
 });
+
+import {materialsCsv, productionCsv} from './monthlyCsv.js';
+test('csv export: BOM, quoting and formula-injection guard', () => {
+  const report = {from: '2026-11-01', to: '2026-11-30',
+    production: [{date: '2026-11-02', time: '09:00', category: 'CIEM', model: 'A,B', order: '=1+1', worker: 'Te "x"', qty: 1}],
+    materials: [{date: '2026-11-02', material: 'Resin', qty: 2.5, unit: 'g', model: 'A', order: 'Z1', category: 'CIEM', worker: 'Te'}], repairs: []};
+  const p = productionCsv(report);
+  assert.equal(p.filename, 'production_2026-11.csv');
+  assert.ok(p.body.startsWith('﻿วันที่'));
+  assert.ok(p.body.includes('"A,B"') && p.body.includes("'=1+1") && p.body.includes('"Te ""x"""'));
+  assert.ok(materialsCsv(report).body.includes('Resin,2.5,g'));
+});
