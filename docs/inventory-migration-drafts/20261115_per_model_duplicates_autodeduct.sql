@@ -1,6 +1,6 @@
 -- Per-model duplicate-order rule, Package/Driver flag + prefix for every model,
 -- duplicate check at submission, auto-deduct of "no picking" materials at request time.
--- DRAFT, NOT YET APPLIED: needs the owner role of schema duplicate_order_private (inventory_executor); the postgres role used by the connector is denied.
+-- APPLIED to inventory-app-v2 on 2026-11-15 via temporary role switch to inventory_executor (schema owner), then reverted.
 
 -- 1. Scope duplicates by model --------------------------------------------------
 ALTER TABLE duplicate_order_private.request_identity ADD COLUMN model_id uuid REFERENCES public.models(id);
@@ -275,3 +275,7 @@ BEGIN
  UPDATE duplicate_order_private.issued_identity SET released_operation_id=p_operation_id WHERE request_id=t.id AND released_operation_id IS NULL;
  RETURN public.inv_finish(p_operation_id,jsonb_build_object('transaction_id',t.id,'cancelled',true));
 END $$;
+
+
+-- Also applied separately (table owner = postgres): GRANT UPDATE ON duplicate_order_private.model_policy TO inventory_executor;
+-- (set_model_settings and the models trigger need to update the policy row.) Temporary schema CREATE grants were revoked afterwards.

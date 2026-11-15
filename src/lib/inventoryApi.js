@@ -14,6 +14,7 @@ export const mutationParameters = Object.freeze({
   create_request: 'model_id order_ref repair_spec',
   create_request_v2: 'model_id order_ref repair_spec work_mode',
   set_model_prefix: 'model_id prefix expected_revision reason',
+  set_model_settings: 'model_id prefix is_package expected_revision reason',
   confirm_pick: 'items',
   cancel_request: 'transaction_id reason legacy_return_verified',
   close_not_completed: 'transaction_id reason returns',

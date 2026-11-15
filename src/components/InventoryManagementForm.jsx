@@ -1,5 +1,5 @@
 import {BomHistory} from './BomHistory.jsx';
-import {ModelPrefixSettings} from './ModelPrefixSettings.jsx';
+import {ModelSettings,ModelTypeFields} from './ModelSettings.jsx';
 import {ModalHeader,BomEditor} from './InventoryUI.jsx';
 import { isDefinitiveFailure } from '../lib/inventoryFailure.js';
 import React, { useEffect, useRef, useState } from 'react';
@@ -36,7 +36,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
   const [values,setValues]=useState({name:task.row?.name||'',unit:task.row?.unit||'',initial_qty:'0',
     low_stock_threshold:String(task.row?.low_stock_threshold??0),requires_picking:task.row?.requires_picking??true,
     is_active:!task.row?.is_active,reason:'',quantity:'',reference:'',note:'',counted_qty:'',supplier_source:'',document_type:'none',po_number:'',invoice_number:'',
-    category:task.row?.category||task.category||'CIEM',bom:[]});
+    category:task.row?.category||task.category||'CIEM',bom:[],new_prefix:'',new_package:false});
   const [materials,setMaterials]=useState([]);const [loading,setLoading]=useState(true);
   const [loadError,setLoadError]=useState(null);const [reload,setReload]=useState(0);
   const [error,setError]=useState(null);const [busy,setBusy]=useState(false);const [done,setDone]=useState(false);
@@ -79,7 +79,13 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
           :'ยืนยัน'+(payload.is_active?'เปิด':'ปิด')+'ใช้งาน '+(latest?.name||'รายการนี้')+'? เหตุผล: '+payload.reason)});
       submission.current=command;
       const result=await command.execute();
-      if(!result?.cancelled){setDone(true);onSuccess();}
+      if(!result?.cancelled){
+        if(kind==='save_model'&&!row?.id&&(values.new_package||values.new_prefix)&&result?.model_id){
+          try{await api.set_model_settings({model_id:result.model_id,prefix:values.new_package?'':values.new_prefix,is_package:values.new_package,expected_revision:1,reason:'ตั้งค่าตอนสร้างรุ่น'}).execute();}
+          catch(settingsError){setDone(true);setError(new Error('สร้างรุ่นแล้ว แต่ตั้งค่า Package/Prefix ไม่สำเร็จ — เปิด "แก้ไขรุ่นและ BOM" ของรุ่นนี้เพื่อตั้งใหม่ ('+settingsError.message+')'));return;}
+        }
+        setDone(true);onSuccess();
+      }
     }catch(e){setError(e);if(isDefinitiveFailure(e)){setOperation(null);submission.current=null;}}
     finally{gate.current=false;setBusy(false);}
   }
@@ -107,12 +113,13 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
       {['create_material','stocktake','set_material_active','set_model_active'].includes(kind) && <label>เหตุผล<textarea value={values.reason} onChange={e=>change('reason',e.target.value)}/></label>}
       {kind==='save_model' && <><label>เหตุผลแก้ BOM<textarea required value={values.reason} onChange={e=>change('reason',e.target.value)}/></label><label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
         {[...new Set(['CIEM','Lifestyle','Sleepplug','Tactical','Universal',values.category])].filter(Boolean).map(c=><option key={c}>{c}</option>)}</select></label>
+        {!row?.id&&<ModelTypeFields prefix={values.new_prefix} isPackage={values.new_package} onPrefix={v=>change('new_prefix',v)} onPackage={v=>change('new_package',v)}/>}
         <BomEditor materials={materials} rows={values.bom} onChange={bom=>change('bom',bom)}/>
         <details><summary>ผลต่อคำขอเดิม</summary><p>แก้ BOM สำหรับคำขอใหม่เท่านั้น สถานะเปิด/ปิดรุ่นไม่เปลี่ยน</p></details></>}
       <button type="submit">บันทึก</button>
     </fieldset></form>
     {kind==='save_model'&&row?.id&&<BomHistory api={api} modelId={row.id} role={role}/>}
-    {kind==='save_model'&&row?.id&&<ModelPrefixSettings api={api} model={row} role={role}/>}
+    {kind==='save_model'&&row?.id&&<ModelSettings api={api} model={row} role={role}/>}
     {busy && <p role="status">กำลังตรวจ/ส่งรายการ…</p>}
     {error && <p role="alert">{managementError(error)}{error.reloadError && ' · โหลดข้อมูลล่าสุดไม่สำเร็จ'}</p>}
     {isStaleStock(error) && <p>โหลดข้อมูลล่าสุด: {row?.qty} {row?.unit} กรุณาทบทวนการนับก่อนทำรายการต่อ</p>}
