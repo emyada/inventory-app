@@ -324,3 +324,6 @@ END $$;
 
 -- 4. Applied afterwards (same role-switch procedure): store users may read setup status so the app can enable actions.
 -- CREATE OR REPLACE FUNCTION public.inventory_setup_status(): inv_read(ARRAY['admin','staff','purchasing','store']).
+
+-- 5. APPLIED: inventory_store_report also readable by the 'store' role (store movements only; combined_balance stays admin/purchasing).
+--    Only the inv_read(ARRAY['admin','purchasing','store']) line differs from the definition above.

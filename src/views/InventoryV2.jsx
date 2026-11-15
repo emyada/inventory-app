@@ -18,6 +18,7 @@ import {InventoryExtensionForm} from '../components/InventoryExtensionForm.jsx';
 import {InventoryOpeningBalance} from '../components/InventoryOpeningBalance.jsx';
 import {normalInventoryEnabled} from '../lib/inventoryOpening.js';
 import {InventoryReports} from '../components/InventoryReports.jsx';
+import {MonthlyReport} from '../components/MonthlyReport.jsx';
 import {managementKinds} from '../lib/inventoryManagement.js';
 import {workspaceTabs} from '../lib/inventoryReports.js';
 const labels={floor:'ผลิต',queue:'คิวหยิบ',materials:'คลัง',requests:'คำขอ',store:'หน้าร้าน',report:'รายงาน'};
@@ -54,7 +55,8 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
       {tab==='requests'&&role==='staff'&&<RequestsPanel createBlocked={createBlocked} api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
       {tab==='requests'&&role==='admin'&&<SupervisorRequests api={api} role={role} userId={profile.id} revision={revision} onAction={setTask} actionBusy={actionBusy}/>}
       {tab==='store'&&['admin','store'].includes(role)&&<StoreWorkspace api={api} role={role} userId={profile.id} revision={revision} onChanged={refresh} actionBusy={actionBusy}/>}
-      {tab==='report'&&['admin','purchasing'].includes(role)&&<><InventoryReports api={api} role={role} revision={revision}/><StoreReports api={api} revision={revision}/></>}
+      {tab==='report'&&role==='admin'&&<><MonthlyReport api={api} revision={revision}/><details className="mr-details"><summary>รายละเอียดสำหรับตรวจสอบ (รายงานเดิม)</summary><InventoryReports api={api} role={role} revision={revision}/></details></>}
+      {tab==='report'&&role==='purchasing'&&<><InventoryReports api={api} role={role} revision={revision}/>{role==='purchasing'&&<StoreReports api={api} role={role} revision={revision}/>}</>}
       {tab==='opening'&&role==='admin'&&<InventoryOpeningBalance api={opening} onChanged={refresh} onBusyChange={setSetupBusy}/>}
       {!tabs.includes(tab)&&!(tab==='opening'&&role==='admin')&&<p role="alert">ไม่มีสิทธิ์เปิดหน้านี้</p>}
     </div>
