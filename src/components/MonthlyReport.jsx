@@ -4,6 +4,7 @@ import {useRefreshRead} from '../hooks/useRefreshRead.js';
 import {loadAllRequests} from '../lib/inventoryReports.js';
 import {buildMonthlyReport, currentMonth, lowMaterials, monthLabel, monthRange, shiftMonth} from '../lib/monthlyReport.js';
 import {buildMonthlyWorkbook} from '../lib/monthlyWorkbook.js';
+import {materialsCsv, productionCsv, repairsCsv} from '../lib/monthlyCsv.js';
 
 function useLoad(load, deps) {
   const [state, setState] = useState({busy: true, error: null, data: null});
@@ -92,6 +93,11 @@ export function MonthlyReport({api, revision}) {
         <div className="mr-card">
           <button type="button" className="inv-primary mr-download" onClick={download}><Download size={18}/> ดาวน์โหลด Excel</button>
           <p className="inv-muted">ไฟล์เดียวมีครบ: สรุปการผลิต · วัตถุดิบแยกหมวด · ซ่อมและอื่นๆ · รายการดิบ (มีชื่อผู้เบิก) · ลำดับนับสต็อก · หน้าร้าน ยอดรวมเป็นสูตร แก้เลขแล้วคำนวณใหม่</p>
+          <div className="mr-csv" role="group" aria-label="ดาวน์โหลด CSV">
+            <button type="button" onClick={() => saveFile(productionCsv(report))}>CSV การผลิต</button>
+            <button type="button" onClick={() => saveFile(materialsCsv(report))}>CSV วัตถุดิบ</button>
+            <button type="button" onClick={() => saveFile(repairsCsv(report))}>CSV ซ่อมและอื่นๆ</button>
+          </div>
           {message && <p role="status">{message}</p>}
         </div>
       </div>

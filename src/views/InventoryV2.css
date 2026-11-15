@@ -348,3 +348,6 @@
 .mr-warn { background: #FEF3E2; border-color: #F3D9A8; }
 .mr-warn h3 { color: #92400E; }
 .inventory-v2 .mr-download { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; }
+
+.inventory-v2 .mr-csv { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.inventory-v2 .mr-csv button { flex: 1 1 auto; min-height: 44px; margin: 0; }
