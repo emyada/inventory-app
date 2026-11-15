@@ -35,3 +35,9 @@ test('modern multi-order validates all numeric input before creating operations'
  assert.throws(()=>createMultiOrderBatch({create_request_v2(){calls++;}},[{model_id:'m',order_ref:'001'},{model_id:'m',order_ref:'ZG2'}],{role:'staff',models:[model]}));
  assert.equal(calls,0);
 });
+test('any model with a configured prefix (e.g. Tactical) takes numeric input and gets the prefix; no prefix keeps free text',()=>{
+ const tactical={id:'t',category:'Tactical',request_contract:requestReferenceContract,order_prefix:'PL'};
+ assert.equal(previewReference(tactical,'12').canonical,'PL12');
+ assert.throws(()=>previewReference(tactical,'A12'));
+ assert.equal(previewReference({...tactical,order_prefix:''},'A12').canonical,'A12');
+});
