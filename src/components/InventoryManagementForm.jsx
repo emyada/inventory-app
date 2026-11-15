@@ -72,7 +72,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
     event.preventDefault();if(gate.current || operation)return;
     gate.current=true;setBusy(true);setError(null);
     try{
-      const command=createManagementSubmission({api,kind,input:values,row,role,loadMaterial,
+      const command=createManagementSubmission({api,kind,input:kind==='save_model'&&!row?.id?{...values,reason:values.reason.trim()||'สร้างรุ่นใหม่'}:values,row,role,loadMaterial,
         onLatest:setRow,onPrepared:setOperation,confirm:({payload,row:latest})=>confirm(
           kind==='stocktake'?'ยืนยันตรวจนับ '+latest.name+' จำนวนที่นับได้ '+payload.counted_qty+' '+latest.unit+'? ระบบจะคำนวณส่วนต่างและบันทึกประวัติ'
           :kind==='save_model'?'ยืนยันแก้ BOM ของ '+payload.name+'? มีผลต่อคำขอใหม่ ประวัติเดิมไม่เปลี่ยน'
@@ -80,7 +80,7 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
       submission.current=command;
       const result=await command.execute();
       if(!result?.cancelled){
-        if(kind==='save_model'&&!row?.id&&(values.new_package||values.new_prefix)&&result?.model_id){
+        if(kind==='save_model'&&!row?.id&&(values.new_package||values.new_prefix)&&values.category!=='Universal'&&result?.model_id){
           try{await api.set_model_settings({model_id:result.model_id,prefix:values.new_package?'':values.new_prefix,is_package:values.new_package,expected_revision:1,reason:'ตั้งค่าตอนสร้างรุ่น'}).execute();}
           catch(settingsError){setDone(true);setError(new Error('สร้างรุ่นแล้ว แต่ตั้งค่า Package/Prefix ไม่สำเร็จ — เปิด "แก้ไขรุ่นและ BOM" ของรุ่นนี้เพื่อตั้งใหม่ ('+settingsError.message+')'));return;}
         }
@@ -111,15 +111,15 @@ export function InventoryManagementForm({task,api,role,onClose,onSuccess,catalog
         <p>หากยอดเปลี่ยนระหว่างนับ ระบบจะให้ตรวจยอดล่าสุดก่อนยืนยันใหม่</p></>}
       {['set_material_active','set_model_active'].includes(kind) && <p>ต้องการ{values.is_active?'เปิด':'ปิด'}ใช้งาน · ประวัติเดิมยังอ่านได้</p>}
       {['create_material','stocktake','set_material_active','set_model_active'].includes(kind) && <label>เหตุผล<textarea value={values.reason} onChange={e=>change('reason',e.target.value)}/></label>}
-      {kind==='save_model' && <><label>เหตุผลแก้ BOM<textarea required value={values.reason} onChange={e=>change('reason',e.target.value)}/></label><label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
+      {kind==='save_model' && <>{row?.id&&<label>เหตุผลแก้ BOM<textarea required value={values.reason} onChange={e=>change('reason',e.target.value)}/></label>}<label>หมวด<select value={values.category} onChange={e=>change('category',e.target.value)}>
         {[...new Set(['CIEM','Lifestyle','Sleepplug','Tactical','Universal',values.category])].filter(Boolean).map(c=><option key={c}>{c}</option>)}</select></label>
-        {!row?.id&&<ModelTypeFields prefix={values.new_prefix} isPackage={values.new_package} onPrefix={v=>change('new_prefix',v)} onPackage={v=>change('new_package',v)}/>}
+        {!row?.id&&values.category!=='Universal'&&<ModelTypeFields prefix={values.new_prefix} isPackage={values.new_package} onPrefix={v=>change('new_prefix',v)} onPackage={v=>change('new_package',v)}/>}
         <BomEditor materials={materials} rows={values.bom} onChange={bom=>change('bom',bom)}/>
         <details><summary>ผลต่อคำขอเดิม</summary><p>แก้ BOM สำหรับคำขอใหม่เท่านั้น สถานะเปิด/ปิดรุ่นไม่เปลี่ยน</p></details></>}
       <button type="submit">บันทึก</button>
     </fieldset></form>
     {kind==='save_model'&&row?.id&&<BomHistory api={api} modelId={row.id} role={role}/>}
-    {kind==='save_model'&&row?.id&&<ModelSettings api={api} model={row} role={role}/>}
+    {kind==='save_model'&&row?.id&&row.category!=='Universal'&&<ModelSettings api={api} model={row} role={role}/>}
     {busy && <p role="status">กำลังตรวจ/ส่งรายการ…</p>}
     {error && <p role="alert">{managementError(error)}{error.reloadError && ' · โหลดข้อมูลล่าสุดไม่สำเร็จ'}</p>}
     {isStaleStock(error) && <p>โหลดข้อมูลล่าสุด: {row?.qty} {row?.unit} กรุณาทบทวนการนับก่อนทำรายการต่อ</p>}
