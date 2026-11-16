@@ -3,6 +3,7 @@ import {attachRequestSettings,previewReference,requestReferenceContract} from '.
 import {MultiOrderDraft} from './MultiOrderDraft.jsx';
 import {cancellationReasons,cancellationReason,hasIssuedStock,restorationWarning} from '../lib/inventoryCancellation.js';
 import {InventoryOrderConfirmation} from './InventoryOrderConfirmation.jsx';
+import {PickGroupConfirmation} from './PickGroupConfirmation.jsx';
 import {ModalHeader} from './InventoryUI.jsx';
 import {X} from 'lucide-react';
 import React, {useEffect, useRef, useState, useSyncExternalStore} from 'react';
@@ -27,7 +28,7 @@ function BatchResult({batch}) {
 function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,createBlocked=false}) {
   const [models,setModels]=useState(task.model?[task.model]:[]);const [materials,setMaterials]=useState([]);const [preview,setPreview]=useState([]);const [returns,setReturns]=useState([]);
   const [catalogError,setCatalogError]=useState(null);const [catalogLoading,setCatalogLoading]=useState(true);const [previewLoading,setPreviewLoading]=useState(false);
-  const [modelId,setModelId]=useState(task.model?.id||'');const [orderRef,setOrderRef]=useState('');const repair=Boolean(task.repair);const [note,setNote]=useState('');
+  const [modelId,setModelId]=useState(task.model?.id||'');const [orderRef,setOrderRef]=useState(task.order_ref||'');const repair=Boolean(task.repair);const [note,setNote]=useState('');
   const [subtype,setSubtype]=useState('CIEM');const [bom,setBom]=useState([{material_id:'',qty:'1'}]);const [selected,setSelected]=useState([]);
   const [sending,setSending]=useState(false);const [operation,setOperation]=useState(null);const operationRef=useRef(null);const [error,setError]=useState(null);const [done,setDone]=useState(false);const [confirmedReturn,setConfirmedReturn]=useState(false);
   const [batchMode,setBatchMode]=useState(false);const [batchRefs,setBatchRefs]=useState([]);const [batchDraft,setBatchDraft]=useState('');const [batchReviewed,setBatchReviewed]=useState(false);const [batch,setBatch]=useState(null);
@@ -43,6 +44,8 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
       if(active)setReturns(returnableMaterials(history.rows,task.row.id));
     }
   }load().catch(e=>{if(active)setCatalogError(e.message);}).finally(()=>{if(active)setCatalogLoading(false);});return()=>{active=false;};},[task,api,issued,role]);
+  useEffect(()=>{if(!task.continued_from||!modelId)return;const m=models.find(x=>x.id===modelId);if(!m?.request_contract)return;
+    try{previewReference(m,orderRef);}catch(e){setOrderRef(r=>r.replace(/^[A-Za-z]+(?=\d+$)/,''));}},[models,modelId,task.continued_from]);
   useEffect(()=>{let active=true;setPreview([]);setPreviewLoading(false);if(!modelId||repair||task.kind!=='create')return;setPreviewLoading(true);managementCatalog.loadBom(modelId).then(rows=>{if(active)setPreview(rows);}).catch(e=>{if(active)setCatalogError(e.message);}).finally(()=>{if(active)setPreviewLoading(false);});return()=>{active=false;};},[modelId,repair,task.kind]);
   const [pickRound]=useState(()=>{try{return {groups:task.kind==='pick'?buildPickRound((task.rows||[task.row]).filter(Boolean)):[]};}catch(e){return {groups:[],error:e.message};}});
   function submit(e){e.preventDefault();if(operationRef.current||batch)return;
@@ -67,7 +70,7 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
     }catch(e){setError(workflowError(e));}
   }
   const locked=(task.kind==='create'&&createBlocked)||Boolean(operation)||Boolean(batch)||catalogLoading||previewLoading||Boolean(catalogError);
-  return <section className="inv-form"><ModalHeader title={task.kind==='create'?'ยื่นคำขอเบิก':task.kind==='pick'?'ยืนยันหยิบ':issued?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'} onClose={onClose} busy={sending}/>{task.kind==='create'&&!repair&&task.model&&<div className="inv-model-summary"><strong>{task.model.name}</strong><span>{task.model.category}</span></div>}
+  return <section className="inv-form"><ModalHeader title={task.kind==='create'?'ยื่นคำขอเบิก':task.kind==='pick'?'ยืนยันหยิบ':issued?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'} onClose={onClose} busy={sending}/>{task.kind==='create'&&task.continued_from&&<p className="inv-muted" role="status">ทำต่อจากคำขอเดิม {task.continued_from} (ปิดแบบไม่สำเร็จ) · ระบบตัดวัตถุดิบใหม่ตามปกติ</p>}{task.kind==='create'&&!repair&&task.model&&<div className="inv-model-summary"><strong>{task.model.name}</strong><span>{task.model.category}</span></div>}
     <p className="inv-muted">ผู้รับผิดชอบ: {profile?.full_name||'บัญชีที่เข้าสู่ระบบ'}</p>
     {(catalogLoading||previewLoading)&&<p role="status">กำลังโหลดข้อมูล…</p>}{catalogError&&<p role="alert">{catalogError} กรุณาปิดแล้วเปิดใหม่</p>}
     <form onSubmit={submit}><fieldset disabled={locked}>
@@ -100,5 +103,6 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
 
 export function InventoryWorkflowForm(props) {
  if(props.task.kind==='pick') return <InventoryOrderConfirmation {...props}/>;
+ if(props.task.kind==='pick_group') return <PickGroupConfirmation {...props}/>;
  return <LegacyWorkflowForm {...props}/>;
 }
