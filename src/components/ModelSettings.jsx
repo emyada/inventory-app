@@ -1,6 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {requestReferenceContract} from '../lib/requestReferences.js';
 export const prefixOptions=['','Z','ZG','PL','PN'];
+export const CUSTOM_PREFIX='__custom__';
+export const cleanPrefix=v=>String(v||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,6);
 export const prefixLabel=p=>p||'ไม่มี prefix (ตัวเลขล้วน)';
 // Shared by "create model" (before the model exists) and "edit model" (ModelSettings below).
 export function ModelTypeFields({prefix,isPackage,onPrefix,onPackage}) {
@@ -8,8 +10,18 @@ export function ModelTypeFields({prefix,isPackage,onPrefix,onPackage}) {
   <label>ประเภทรุ่น<select value={isPackage?'package':'driver'} onChange={e=>onPackage(e.target.value==='package')}>
    <option value="driver">งานหลัก / Driver (ห้ามเลขออเดอร์ซ้ำในรุ่นเดียวกัน)</option>
    <option value="package">Package (ใช้เลขออเดอร์เดียวกับงานหลักได้)</option></select></label>
-  {!isPackage&&<label>Prefix หน้าเลขออเดอร์<select value={prefix} onChange={e=>onPrefix(e.target.value)}>
-   {prefixOptions.map(p=><option key={p} value={p}>{prefixLabel(p)}</option>)}</select></label>}
+  {!isPackage&&<PrefixPicker prefix={prefix} onPrefix={onPrefix}/>}
+ </>;
+}
+// Preset prefixes plus "ตั้งเอง": any 1-6 letters (A-Z), stored in capitals. Employees still type digits only.
+function PrefixPicker({prefix,onPrefix}) {
+ const preset=prefixOptions.includes(prefix);
+ const [custom,setCustom]=useState(!preset);
+ const selected=custom?CUSTOM_PREFIX:prefix;
+ return <>
+  <label>Prefix หน้าเลขออเดอร์<select value={selected} onChange={e=>{if(e.target.value===CUSTOM_PREFIX){setCustom(true);if(preset)onPrefix('');}else{setCustom(false);onPrefix(e.target.value);}}}>
+   {prefixOptions.map(p=><option key={p} value={p}>{prefixLabel(p)}</option>)}<option value={CUSTOM_PREFIX}>ตั้งเอง…</option></select></label>
+  {custom&&<label>Prefix ที่ตั้งเอง (ตัวอักษร A–Z ไม่เกิน 6 ตัว)<input value={prefix} maxLength={6} autoCapitalize="characters" autoComplete="off" placeholder="เช่น CL" onChange={e=>onPrefix(cleanPrefix(e.target.value))}/></label>}
  </>;
 }
 export function ModelSettings({api,model,role}) {

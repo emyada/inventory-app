@@ -1,0 +1,8 @@
+-- Custom order prefix: any 1-6 letters A-Z (stored upper-case) instead of the fixed list Z/ZG/PL/PN.
+-- APPLIED to inventory-app-v2 on 2026-11-15 as migration "custom_order_prefix" (same temporary role ritual as before:
+-- schema grants to inventory_executor/postgres were revoked afterwards).
+-- 1. model_prefix CHECK  ->  prefix ~ '^[A-Z]{0,6}$'
+-- 2. inventory_set_model_prefix / inventory_set_model_settings validate with  p_prefix !~ '^[A-Z]{0,6}$'
+-- 3. duplicate_order_private.reference_key strips ANY 1-6 leading letters when the rest is digits:
+--      '^[A-Z]{0,6}[0-9]+$' -> 'numeric:'||digits-without-leading-zeros   (Z1234 = ZG1234 = CL1234 = 1234)
+--    Anything else stays 'text:'||lower(ref).
