@@ -1,0 +1,6 @@
+-- Applied 2026-11-16 as migration managed_login_two_step_provision (note only).
+-- inventory_identity.guard_login: INSERT now checks only the managed login format (name@iem-workshop.local);
+--   the stock_managed metadata check moved to provisioning. Rename block unchanged.
+-- inventory_identity.provision_login: creates the profile when stock_managed=true and stock_actor is set and
+--   no profile exists. Trigger stock_provision_login is now AFTER INSERT OR UPDATE OF raw_app_meta_data.
+-- Verified in a rolled-back transaction: insert w/o metadata -> no profile; metadata update -> profile; bad email rejected.
