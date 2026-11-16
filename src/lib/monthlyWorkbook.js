@@ -3,7 +3,8 @@
 // fall outside a hand-typed range. Cached values are written too, so viewers that do not
 // recalculate still show correct numbers.
 import {reportFilesZIP} from './reportArchive.js';
-import {REPAIR_CATEGORY} from './monthlyReport.js';
+import {REPAIR_CATEGORY, bangkokTime} from './monthlyReport.js';
+import {localDay} from './inventoryReports.js';
 
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const PROD = 'ดิบ-การผลิต', MAT = 'ดิบ-วัตถุดิบ';
@@ -194,9 +195,36 @@ function mainSalesSheet(items) {
   items.forEach(r => rows.push([T(r.name), T(r.unit), N(Number(r.qty))]));
   return {name: 'ขายจากคลังหลัก', widths: [44, 8, 26], rows};
 }
+// One row per sold line (who, when, tag, where it was taken from), with item totals on the right.
+// Cancelled sales stay visible but are left out of the totals.
+function storeSalesSheet(sales) {
+  const SRC = {store: 'หน้าร้าน', main: 'คลังหลัก (อื่นๆ)'};
+  const lines = [];
+  for (const s of [...sales].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) {
+    const status = s.status === 'cancelled' ? 'ยกเลิก' : s.pending ? 'รอแท็ก' : 'ขายแล้ว';
+    for (const l of s.lines || []) lines.push({day: localDay(s.created_at), time: bangkokTime(s.created_at), seller: s.seller_name || '', tag: s.tag || '', status, source: SRC[l.source] || SRC.store,
+      name: l.name, kind: l.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่', qty: Number(l.qty), unit: l.item_kind === 'model' ? 'ชุด' : l.unit});
+  }
+  const totals = new Map();
+  for (const l of lines.filter(x => x.status !== 'ยกเลิก')) {
+    const k = `${l.name}\u0000${l.source}`;
+    const cur = totals.get(k) || {name: l.name, source: l.source, unit: l.unit, qty: 0};
+    cur.qty = round(cur.qty + l.qty); totals.set(k, cur);
+  }
+  const list = [...totals.values()].sort((a, b) => a.source.localeCompare(b.source) || b.qty - a.qty || a.name.localeCompare(b.name));
+  const height = Math.max(lines.length, list.length);
+  const out = [['วันที่', 'เวลา', 'ผู้ขาย', 'แท็กการขาย', 'สถานะ', 'ตัดจาก', 'รายการ', 'ประเภท', 'จำนวน', 'หน่วย'].map(H).concat([null, H('รายการ (ไม่นับที่ยกเลิก)'), H('ตัดจาก'), H('หน่วย'), H('ยอดขายรวม')])];
+  for (let i = 0; i < height; i++) {
+    const l = lines[i], t = list[i];
+    const left = l ? [D(l.day), T(l.time), T(l.seller), T(l.tag), T(l.status), T(l.source), T(l.name), T(l.kind), N(l.qty), T(l.unit)] : Array(10).fill(null);
+    const right = t ? [null, T(t.name), T(t.source), T(t.unit), F(`SUMIFS($I:$I,$G:$G,L${i + 2},$F:$F,M${i + 2},$E:$E,"<>ยกเลิก")`, t.qty)] : [null, null, null, null, null];
+    out.push([...left, ...right]);
+  }
+  return {name: 'รายการขายหน้าร้าน', widths: [12, 8, 16, 18, 10, 18, 40, 14, 10, 8, 3, 40, 18, 8, 14], rows: out};
+}
 const sheetNameFor = cat => cat.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 31);
 
-export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mainSales = null} = {}) {
+export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mainSales = null, storeSales = null} = {}) {
   const prod = rawProduction(report);
   const sheets = [summarySheet(report, prod.rows)];
   const allMaterials = new Map();
@@ -217,6 +245,7 @@ export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mai
   if (stock.length) sheets.push(stockSheet(stock, report));
   if (storeItems?.length) sheets.push(storeSheet(storeItems));
   if (mainSales?.length) sheets.push(mainSalesSheet(mainSales));
+  if (storeSales?.length) sheets.push(storeSalesSheet(storeSales));
   return {
     filename: `stock_report_${report.from.slice(0, 7)}.xlsx`, type: XLSX_TYPE,
     sheetNames: sheets.map(s => s.name), body: reportFilesZIP(workbookFiles(sheets)),

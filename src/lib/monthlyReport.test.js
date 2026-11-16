@@ -74,3 +74,11 @@ test('unfinished jobs: derived continuation, loss, kept out of production and ma
   const dec = buildMonthlyReport([closed, again, waiting], '2026-12-01', '2026-12-31');
   assert.equal(dec.unfinished.length, 0); assert.equal(dec.totalPairs, 1);
 });
+
+test('workbook adds a per-line store sales sheet (seller, time, source) when sales exist', () => {
+  const r = buildMonthlyReport(rows, '2026-09-01', '2026-09-30');
+  const sales = [{sale_id: 's1', created_at: '2026-09-10T03:00:00Z', seller_name: 'Mint', tag: 'SH1001', status: 'active', pending: false, lines: [{name: 'Music universal', item_kind: 'model', qty: 1, unit: 'ชุด', source: 'store'}, {name: 'Filter box', item_kind: 'material', qty: 2, unit: 'pcs', source: 'main'}]},
+    {sale_id: 's2', created_at: '2026-09-11T03:00:00Z', seller_name: 'Mint', tag: null, status: 'cancelled', pending: true, lines: [{name: 'Filter box', item_kind: 'material', qty: 5, unit: 'pcs', source: 'main'}]}];
+  assert.ok(buildMonthlyWorkbook(r, {storeSales: sales}).sheetNames.includes('รายการขายหน้าร้าน'));
+  assert.ok(!buildMonthlyWorkbook(r, {storeSales: []}).sheetNames.includes('รายการขายหน้าร้าน'));
+});
