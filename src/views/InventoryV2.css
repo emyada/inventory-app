@@ -349,6 +349,22 @@
 .mr-warn h3 { color: #92400E; }
 .inventory-v2 .mr-download { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; }
 
+/* Pick queue grouped by person */
+.inventory-v2 .pq-card { display: flex; flex-direction: column; gap: 8px; position: static; }
+.inventory-v2 .pq-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.inventory-v2 .pq-head h3 { margin: 0; font-size: 18px; }
+.inventory-v2 .pq-head span { color: var(--inv-muted); font-size: 13px; }
+.inventory-v2 .pq-models, .inventory-v2 .pq-mats, .inventory-v2 .pq-orders { list-style: none; margin: 0; padding: 0; }
+.inventory-v2 .pq-models li, .inventory-v2 .pq-mats li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid #EFEBE2; }
+.inventory-v2 .pq-models li:first-child, .inventory-v2 .pq-mats li:first-child { border-top: 0; }
+.inventory-v2 .pq-models strong, .inventory-v2 .pq-mats strong { font-variant-numeric: tabular-nums; color: #0B5F58; }
+.inventory-v2 .pq-mats li.short strong { color: #92400E; }
+.inventory-v2 .pq-orders { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.inventory-v2 .pq-orders small { color: var(--inv-muted); }
+.inventory-v2 .pq-label { margin: 10px 0 2px; font-weight: 600; font-size: 13px; }
+.inventory-v2 .pq-ok { margin: 0; padding: 8px 12px; border-radius: 10px; background: #E8F3EE; color: #0B5F58; font-size: 13px; font-weight: 600; }
+.inventory-v2 .pq-warn { margin: 0; padding: 8px 12px; border-radius: 10px; background: #FEF3E2; color: #92400E; font-size: 13px; font-weight: 600; }
+.inventory-v2 .pq-pick { display: flex; align-items: center; gap: 8px; }
 /* Mobile: stop the page sliding left/right. iOS Safari gives date inputs an intrinsic width that
    ignores width:100%, so reset it, let grid/flex children shrink, and clip any stray overflow. */
 .inventory-v2 { overflow-x: clip; max-width: 100%; }
