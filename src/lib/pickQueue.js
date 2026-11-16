@@ -47,3 +47,18 @@ export function groupRequirements(rows, materials) {
     return {...g, available: valid ? String(m.qty) : null, insufficient: !valid || sumAmounts([m.qty, negative(g.required)]).startsWith('-')};
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// Which orders fit current stock? Oldest order first; an order that would push any material below zero
+// (given the orders already accepted) is "short" and listed with what it lacks. Orders whose
+// requirements cannot be computed are never accepted.
+export function splitByStock(rows, materials) {
+  const sorted = [...rows].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id)));
+  const fit = [], short = [];
+  for (const row of sorted) {
+    try {
+      const lacking = groupRequirements([...fit, row], materials).filter(r => r.insufficient).map(r => r.name);
+      if (lacking.length) short.push({row, lacking}); else fit.push(row);
+    } catch (e) { short.push({row, lacking: [e.message]}); }
+  }
+  return {fit, short};
+}
