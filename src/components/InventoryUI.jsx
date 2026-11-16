@@ -6,15 +6,21 @@ export function ModalHeader({title,onClose,busy=false}) {
  return <header className="inv-modal-header"><h2>{title}</h2><button type="button" className="inv-icon" aria-label="ปิด" title="ปิด" disabled={busy} onClick={onClose}><X size={20}/></button></header>;
 }
 export function Overflow({label,children}) {
- const ref=useRef(null);const [open,setOpen]=useState(false);
+ const ref=useRef(null);const [open,setOpen]=useState(false);const [pos,setPos]=useState(null);
  // Close when tapping anywhere else (including another card's menu), after choosing an item, or on Escape.
- useEffect(()=>{if(!open)return undefined;
+ // Place the popup in the viewport (fixed) so it is never clipped by the screen edge or a scrolling parent.
+ useEffect(()=>{if(!open){setPos(null);return undefined;}
+  const place=()=>{const el=ref.current;if(!el)return;const r=el.getBoundingClientRect();
+   const w=Math.min(220,window.innerWidth*0.75,window.innerWidth-16);
+   const left=Math.max(8,Math.min(r.right-w,window.innerWidth-w-8));
+   setPos({position:'fixed',top:Math.round(r.bottom+4),left:Math.round(left),right:'auto',width:Math.round(w)});};
+  place();window.addEventListener('resize',place);window.addEventListener('scroll',place,true);
   const outside=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
   const key=e=>{if(e.key==='Escape')setOpen(false);};
   document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',key);
-  return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',key);};
+  return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',key);window.removeEventListener('resize',place);window.removeEventListener('scroll',place,true);};
  },[open]);
- return <details className="inv-overflow" ref={ref} open={open} onToggle={e=>setOpen(e.currentTarget.open)}><summary aria-label={label} title={label}><MoreHorizontal size={20}/></summary><div className="inv-overflow-body" onClick={e=>{if(e.target.closest('button'))setOpen(false);}}>{children}</div></details>;
+ return <details className="inv-overflow" ref={ref} open={open} onToggle={e=>setOpen(e.currentTarget.open)}><summary aria-label={label} title={label}><MoreHorizontal size={20}/></summary><div className="inv-overflow-body" style={pos||undefined} onClick={e=>{if(e.target.closest('button'))setOpen(false);}}>{children}</div></details>;
 }
 export function BomEditor({materials,rows,onChange}) {
  const [materialId,setMaterialId]=useState(''),[quantity,setQuantity]=useState('1'),[error,setError]=useState('');

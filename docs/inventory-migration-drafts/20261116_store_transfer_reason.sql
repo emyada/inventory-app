@@ -1,0 +1,6 @@
+-- Applied 2026-11-16 as migration store_transfer_movement_reason (note only).
+-- Fix: inventory_store_transfer used reason 'production_issue', rejected by inv_check_movement.
+-- 1) inventory_movements CHECKs: add reason 'store_transfer' (delta < 0).
+-- 2) inv_check_movement: store_transfer allowed only for operation kind 'store_transfer' (no allocations).
+-- 3) inventory_store_transfer: inv_move(..., 'store_transfer', 'store:transfer', note).
+-- 4) inventory_balance_report: new column store_transfer; closing = ... - store_transfer.
