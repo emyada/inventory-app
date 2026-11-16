@@ -80,6 +80,13 @@ export function MonthlyReport({api, revision}) {
           {active.materials.length > 8 && <details><summary>ดูทั้ง {active.materials.length} รายการ</summary>
             {active.materials.slice(8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
         </div>}
+        {(report.unfinished.length > 0 || report.waitingPick > 0) && <div className="mr-card mr-unfinished"><h3>ไม่เสร็จ / ยกไปเดือนหน้า</h3>
+          {report.unfinished.map(j => <div className="mr-row" key={j.id}><span>{j.order} · {j.model}<small>{j.worker}{j.continued ? ` · ทำต่อแล้ว ${j.continued.date}` : ' · ยังไม่ได้ทำต่อ'}</small></span><span>1 คู่</span></div>)}
+          {report.unfinishedLoss.length > 0 && <details><summary>สูญเสียจากงานไม่เสร็จ ({report.unfinishedLoss.length} รายการ)</summary>
+            {report.unfinishedLoss.map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
+          {report.waitingPick > 0 && <p className="inv-muted">ยื่นแล้วแต่ยังไม่ได้หยิบ {report.waitingPick} ออเดอร์ (ยังไม่ตัดสต็อก ใช้กระทบยอดตอนนับ)</p>}
+          <p className="inv-muted">ไม่นับเป็นยอดผลิต และไม่นับในวัตถุดิบที่ใช้ของเดือนนี้</p>
+        </div>}
         <div className="mr-card mr-warn"><h3>ควรสั่งเพิ่ม</h3>
           {combined.busy && <p role="status">กำลังโหลด…</p>}
           {combined.error && <p role="alert">โหลดยอดรวมไม่สำเร็จ</p>}

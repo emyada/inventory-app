@@ -379,3 +379,6 @@
   .inventory-v2 .canonical-reports .inv-subnav { flex-wrap: wrap; }
 }
 .inventory-v2 .inv-filters input[type="date"] { width: 100%; min-width: 0; display: block; }
+
+.inventory-v2 .mr-unfinished { border-left: 4px solid #D97706; }
+.inventory-v2 .mr-unfinished small { display: block; color: var(--inv-muted); font-size: 12px; }

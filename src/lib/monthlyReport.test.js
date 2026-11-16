@@ -38,7 +38,7 @@ test('counts one pair per request; Bangkok month edges; cancelled and not-comple
 test('workbook has every sheet, whole-column SUMIF formulas and cached values', () => {
   const r = buildMonthlyReport(rows, '2026-09-01', '2026-09-30');
   const out = buildMonthlyWorkbook(r, {stock: [{name: 'G217_1000 g', unit: 'g', qty: '500'}], storeItems: [{name: 'Music', item_kind: 'model', unit: 'ชุด', opening: '0', transfer_in: '20', sold: '3'}]});
-  assert.deepEqual(out.sheetNames, ['สรุปการผลิต', 'วัตถุดิบรวม', 'CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'ซ่อมและอื่นๆ', 'ดิบ-การผลิต', 'ดิบ-วัตถุดิบ', 'ลำดับนับสต็อก', 'หน้าร้าน']);
+  assert.deepEqual(out.sheetNames, ['สรุปการผลิต', 'วัตถุดิบรวม', 'CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'ซ่อมและอื่นๆ', 'ไม่เสร็จ-ยกไปเดือนหน้า', 'ดิบ-การผลิต', 'ดิบ-วัตถุดิบ', 'ลำดับนับสต็อก', 'หน้าร้าน']);
   assert.equal(out.filename, 'stock_report_2026-09.xlsx');
   const sheets = workbookFiles([{name: 'A', widths: [8], rows: [[{f: "SUMIF($B:$B,A2,$C:$C)", v: 5, s: 2}, {t: '=1+1', s: 0}]]}]);
   const xml = sheets.find(f => f.name === 'xl/worksheets/sheet1.xml').content;
@@ -50,4 +50,27 @@ test('workbook has every sheet, whole-column SUMIF formulas and cached values', 
 test('low materials use the combined (main + store) total', () => {
   assert.deepEqual(lowMaterials({materials: [{name: 'A', unit: 'g', total_qty: '5', low_stock_threshold: '10'}, {name: 'B', unit: 'g', total_qty: '50', low_stock_threshold: '10'}]}),
     [{name: 'A', unit: 'g', total: 5, threshold: 10}]);
+});
+
+import {unfinishedJobs, continuationOrder} from './unfinished.js';
+test('unfinished jobs: derived continuation, loss, kept out of production and material usage', () => {
+  const closed = {id: 'u1', category: 'CIEM', model_id: 'm1', model_name: 'OCL-Driver', order_ref: 'Z12261', staff_name: 'Golf', created_at: '2026-11-29T10:00:00Z',
+    cancelled_at: '2026-11-30T09:00:00Z', closure_kind: 'production_not_completed', workflow_state: 'production_not_completed',
+    bom_snapshot: [line('l1', 2), {material_name: 'G217', qty: '24', unit: 'g', line_id: 'l2'}],
+    return_summary: [{line_id: 'l1', returned_qty: '2', consumed_qty: '0'}, {line_id: 'l2', returned_qty: '0', consumed_qty: '24'}]};
+  const again = {id: 'n1', category: 'CIEM', model_id: 'm1', model_name: 'OCL-Driver', order_ref: 'ZG12261', staff_name: 'Golf', created_at: '2026-12-02T03:00:00Z', workflow_state: 'pending', bom_snapshot: [line('l1', 2)]};
+  const waiting = {id: 'w1', category: 'CIEM', model_id: 'm1', model_name: 'OCL-Driver', order_ref: 'Z999', staff_name: 'Te', created_at: '2026-11-30T03:00:00Z', workflow_state: 'pending', bom_snapshot: []};
+  const nov = buildMonthlyReport([closed, again, waiting], '2026-11-01', '2026-11-30');
+  assert.equal(nov.totalPairs, 1); // only the waiting one; the unfinished job is not production
+  assert.equal(nov.materials.length, 0);
+  assert.equal(nov.unfinished.length, 1);
+  assert.equal(nov.unfinished[0].continued.date, '2026-12-02');
+  assert.deepEqual(nov.unfinishedLoss, [{material: 'G217', unit: 'g', qty: 24}]);
+  assert.equal(nov.waitingPick, 1);
+  assert.equal(unfinishedJobs([closed])[0].continued, null);
+  assert.equal(continuationOrder('Z12261'), '12261'); assert.equal(continuationOrder('UV-abc'), 'UV-abc');
+  const wb = buildMonthlyWorkbook(nov);
+  assert.ok(wb.sheetNames.includes('ไม่เสร็จ-ยกไปเดือนหน้า'));
+  const dec = buildMonthlyReport([closed, again, waiting], '2026-12-01', '2026-12-31');
+  assert.equal(dec.unfinished.length, 0); assert.equal(dec.totalPairs, 1);
 });
