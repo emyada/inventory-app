@@ -3,7 +3,8 @@
 // fall outside a hand-typed range. Cached values are written too, so viewers that do not
 // recalculate still show correct numbers.
 import {reportFilesZIP} from './reportArchive.js';
-import {REPAIR_CATEGORY} from './monthlyReport.js';
+import {REPAIR_CATEGORY, bangkokTime} from './monthlyReport.js';
+import {localDay} from './inventoryReports.js';
 
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const PROD = 'ดิบ-การผลิต', MAT = 'ดิบ-วัตถุดิบ';
@@ -59,14 +60,28 @@ export function workbookFiles(sheets) {
 const sumBy = (rows, pick, qty = r => r.qty) => rows.reduce((a, r) => a + (pick(r) ? qty(r) : 0), 0);
 
 function rawProduction(report) {
-  const rows = [...report.production, ...report.repairs.map(r => ({...r, qty: 1}))].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  return {
-    rows,
-    sheet: {name: PROD, widths: [12, 8, 16, 26, 16, 16, 9], rows: [
-      ['วันที่', 'เวลา', 'หมวดหมู่', 'รุ่นสินค้า', 'ออเดอร์', 'ผู้เบิก', 'จำนวน'].map(H),
-      ...rows.map(r => [D(r.date), T(r.time), T(r.category), T(r.model), T(r.order), T(r.worker), N(r.qty)]),
-    ]},
-  };
+  const rows = [...report.production, ...report.repairs.map(r => ({...r, qty: 1, order: r.order || r.reason || ''}))].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  // Right-hand block (like the team's own sheet): per category, which order codes were pulled, with pairs.
+  const cats = [...new Set([...report.categories.map(c => c.name), ...(report.repairs.length ? [REPAIR_CATEGORY] : [])])];
+  const blocks = cats.map(cat => {
+    const codes = new Map();
+    for (const r of rows.filter(x => x.category === cat)) codes.set(r.order, (codes.get(r.order) || 0) + r.qty);
+    return {cat, list: [...codes.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'en', {numeric: true}))};
+  });
+  const height = Math.max(rows.length, ...blocks.map(b => b.list.length));
+  const head = ['วันที่', 'เวลา', 'หมวดหมู่', 'รุ่นสินค้า', 'ออเดอร์', 'ผู้เบิก', 'จำนวน'].map(H);
+  blocks.forEach(b => head.push(null, H(`${b.cat} — มีรหัสอะไรบ้างที่กดเบิก (${b.list.length})`), H('จำนวน (คู่)')));
+  const out = [head];
+  for (let i = 0; i < height; i++) {
+    const r = rows[i];
+    const line = r ? [D(r.date), T(r.time), T(r.category), T(r.model), T(r.order), T(r.worker), N(r.qty)] : Array(7).fill(null);
+    blocks.forEach((b, bi) => {
+      const col = letter(8 + bi * 3), e = b.list[i];
+      line.push(null, e ? T(e[0]) : null, e ? F(`SUMIFS($G:$G,$C:$C,"${b.cat.replaceAll('"', '""')}",$E:$E,${col}${i + 2})`, e[1]) : null);
+    });
+    out.push(line);
+  }
+  return {rows, sheet: {name: PROD, widths: [12, 8, 16, 26, 16, 16, 9, ...blocks.flatMap(() => [3, 34, 12])], rows: out}};
 }
 function summarySheet(report, prodRows) {
   const sumF = (cat, model) => model === undefined
@@ -89,12 +104,23 @@ function summarySheet(report, prodRows) {
   rows.push([T('ผลิตทั้งหมด (ไม่รวมซ่อมและอื่นๆ)', 4), null, F('SUMIFS(C:C,B:B,"(รวมหมวด)",A:A,"<>' + REPAIR_CATEGORY + '")', total, 5)]);
   return {name: 'สรุปการผลิต', widths: [30, 30, 14], rows};
 }
-function rawMaterials(report) {
+function rawMaterials(report, stock = []) {
   const rows = report.materials;
-  return {name: MAT, widths: [12, 42, 12, 8, 26, 16, 16, 16], rows: [
-    ['วันที่', 'ชื่อวัตถุดิบ', 'จำนวนที่ใช้', 'หน่วย', 'รุ่นสินค้า', 'ออเดอร์', 'หมวดหมู่', 'ผู้เบิก'].map(H),
-    ...rows.map(r => [D(r.date), T(r.material), N(r.qty), T(r.unit), T(r.model), T(r.order), T(r.category), T(r.worker)]),
-  ]};
+  // Right-hand block (like the team's file): every stock item in stock-list order with its total used, zeros included.
+  const used = new Map();
+  for (const m of rows) used.set(m.material, round((used.get(m.material) || 0) + m.qty));
+  const names = stock.length ? stock.map(m => m.name) : [...used.keys()].sort((x, y) => x.localeCompare(y));
+  const extra = [...used.keys()].filter(n => !names.includes(n));
+  const list = [...names, ...extra];
+  const height = Math.max(rows.length, list.length);
+  const out = [['วันที่', 'ชื่อวัตถุดิบ', 'จำนวนที่ใช้', 'หน่วย', 'รุ่นสินค้า', 'ออเดอร์', 'หมวดหมู่', 'ผู้เบิก', null, H('วัตถุดิบ (ตามลำดับสต็อก)'), H('ยอดใช้รวม')].map(c => (typeof c === 'string' ? H(c) : c))];
+  for (let i = 0; i < height; i++) {
+    const r = rows[i];
+    const left = r ? [D(r.date), T(r.material), N(r.qty), T(r.unit), T(r.model), T(r.order), T(r.category), T(r.worker)] : Array(8).fill(null);
+    const right = list[i] !== undefined ? [null, T(list[i]), F(`SUMIF($B:$B,J${i + 2},$C:$C)`, used.get(list[i]) || 0)] : [null, null, null];
+    out.push([...left, ...right]);
+  }
+  return {name: MAT, widths: [12, 42, 12, 8, 26, 16, 16, 16, 3, 44, 14], rows: out};
 }
 function totalsBlock(startCol, materialRows, logCols) {
   // Right-hand block: one row per material with a SUMIF over the sheet's own log columns.
@@ -169,9 +195,36 @@ function mainSalesSheet(items) {
   items.forEach(r => rows.push([T(r.name), T(r.unit), N(Number(r.qty))]));
   return {name: 'ขายจากคลังหลัก', widths: [44, 8, 26], rows};
 }
+// One row per sold line (who, when, tag, where it was taken from), with item totals on the right.
+// Cancelled sales stay visible but are left out of the totals.
+function storeSalesSheet(sales) {
+  const SRC = {store: 'หน้าร้าน', main: 'คลังหลัก (อื่นๆ)'};
+  const lines = [];
+  for (const s of [...sales].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) {
+    const status = s.status === 'cancelled' ? 'ยกเลิก' : s.pending ? 'รอแท็ก' : 'ขายแล้ว';
+    for (const l of s.lines || []) lines.push({day: localDay(s.created_at), time: bangkokTime(s.created_at), seller: s.seller_name || '', tag: s.tag || '', status, source: SRC[l.source] || SRC.store,
+      name: l.name, kind: l.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่', qty: Number(l.qty), unit: l.item_kind === 'model' ? 'ชุด' : l.unit});
+  }
+  const totals = new Map();
+  for (const l of lines.filter(x => x.status !== 'ยกเลิก')) {
+    const k = `${l.name}\u0000${l.source}`;
+    const cur = totals.get(k) || {name: l.name, source: l.source, unit: l.unit, qty: 0};
+    cur.qty = round(cur.qty + l.qty); totals.set(k, cur);
+  }
+  const list = [...totals.values()].sort((a, b) => a.source.localeCompare(b.source) || b.qty - a.qty || a.name.localeCompare(b.name));
+  const height = Math.max(lines.length, list.length);
+  const out = [['วันที่', 'เวลา', 'ผู้ขาย', 'แท็กการขาย', 'สถานะ', 'ตัดจาก', 'รายการ', 'ประเภท', 'จำนวน', 'หน่วย'].map(H).concat([null, H('รายการ (ไม่นับที่ยกเลิก)'), H('ตัดจาก'), H('หน่วย'), H('ยอดขายรวม')])];
+  for (let i = 0; i < height; i++) {
+    const l = lines[i], t = list[i];
+    const left = l ? [D(l.day), T(l.time), T(l.seller), T(l.tag), T(l.status), T(l.source), T(l.name), T(l.kind), N(l.qty), T(l.unit)] : Array(10).fill(null);
+    const right = t ? [null, T(t.name), T(t.source), T(t.unit), F(`SUMIFS($I:$I,$G:$G,L${i + 2},$F:$F,M${i + 2},$E:$E,"<>ยกเลิก")`, t.qty)] : [null, null, null, null, null];
+    out.push([...left, ...right]);
+  }
+  return {name: 'รายการขายหน้าร้าน', widths: [12, 8, 16, 18, 10, 18, 40, 14, 10, 8, 3, 40, 18, 8, 14], rows: out};
+}
 const sheetNameFor = cat => cat.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 31);
 
-export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mainSales = null} = {}) {
+export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mainSales = null, storeSales = null} = {}) {
   const prod = rawProduction(report);
   const sheets = [summarySheet(report, prod.rows)];
   const allMaterials = new Map();
@@ -188,10 +241,11 @@ export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mai
     sheets.push(logSheet('ซ่อมและอื่นๆ', report.materials.filter(m => m.category === REPAIR_CATEGORY), {withReason: true}));
   }
   if (report.unfinished.length) sheets.push(unfinishedSheet(report));
-  sheets.push(prod.sheet, rawMaterials(report));
+  sheets.push(prod.sheet, rawMaterials(report, stock));
   if (stock.length) sheets.push(stockSheet(stock, report));
   if (storeItems?.length) sheets.push(storeSheet(storeItems));
   if (mainSales?.length) sheets.push(mainSalesSheet(mainSales));
+  if (storeSales?.length) sheets.push(storeSalesSheet(storeSales));
   return {
     filename: `stock_report_${report.from.slice(0, 7)}.xlsx`, type: XLSX_TYPE,
     sheetNames: sheets.map(s => s.name), body: reportFilesZIP(workbookFiles(sheets)),

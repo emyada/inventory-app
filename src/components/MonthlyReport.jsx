@@ -1,7 +1,7 @@
 import React, {useMemo, useState} from 'react';
 import {Download} from 'lucide-react';
 import {useRefreshRead} from '../hooks/useRefreshRead.js';
-import {loadAllRequests} from '../lib/inventoryReports.js';
+import {loadAllRequests, localDay} from '../lib/inventoryReports.js';
 import {buildMonthlyReport, currentMonth, lowMaterials, monthLabel, monthRange, shiftMonth} from '../lib/monthlyReport.js';
 import {buildMonthlyWorkbook} from '../lib/monthlyWorkbook.js';
 
@@ -32,6 +32,7 @@ export function MonthlyReport({api, revision}) {
   // Secondary reads: a failure here only removes that part of the page / workbook.
   const combined = useLoad(() => api.combined_balance(), [api, revision]);
   const store = useLoad(() => api.store_report({date_from: from, date_to: to, timezone: 'Asia/Bangkok'}), [api, revision, from, to]);
+  const sales = useLoad(() => api.store_list_sales({date_from: from, date_to: to, timezone: 'Asia/Bangkok', limit: 1000}), [api, revision, from, to]);
   const stock = useLoad(() => api.list_materials({include_inactive: false}), [api, revision]);
 
   const report = useMemo(() => {
@@ -48,8 +49,8 @@ export function MonthlyReport({api, revision}) {
   const download = () => {
     setMessage('');
     try {
-      saveFile(buildMonthlyWorkbook(report, {stock: stock.data || [], storeItems: store.data?.items || null, mainSales: store.data?.main_sales || null}));
-      const missing = [stock.error && 'ลำดับนับสต็อก', store.error && 'หน้าร้าน'].filter(Boolean);
+      saveFile(buildMonthlyWorkbook(report, {stock: stock.data || [], storeItems: store.data?.items || null, mainSales: store.data?.main_sales || null, storeSales: (sales.data || []).filter(x => { const d = localDay(x.created_at); return d >= from && d <= to; })}));
+      const missing = [stock.error && 'ลำดับนับสต็อก', (store.error || sales.error) && 'หน้าร้าน'].filter(Boolean);
       if (missing.length) setMessage(`ไฟล์นี้ไม่มีชีต ${missing.join(' และ ')} เพราะโหลดข้อมูลไม่สำเร็จ`);
     } catch (e) { setMessage(e.message || 'สร้างไฟล์ไม่สำเร็จ'); }
   };
@@ -104,7 +105,7 @@ export function MonthlyReport({api, revision}) {
         </div>
         <div className="mr-card">
           <button type="button" className="inv-primary mr-download" onClick={download}><Download size={18}/> ดาวน์โหลด Excel</button>
-          <p className="inv-muted">ไฟล์เดียวมีครบ: สรุปการผลิต · วัตถุดิบแยกหมวด · ซ่อมและอื่นๆ · รายการดิบ (มีชื่อผู้เบิก) · ลำดับนับสต็อก · หน้าร้าน ยอดรวมเป็นสูตร แก้เลขแล้วคำนวณใหม่</p>
+          <p className="inv-muted">ไฟล์เดียวมีครบ: สรุปการผลิต · วัตถุดิบแยกหมวด · ซ่อมและอื่นๆ · รายการดิบ (มีชื่อผู้เบิก) · ลำดับนับสต็อก · หน้าร้าน · รายการขายหน้าร้าน (ชื่อผู้ขาย วันเวลา) ยอดรวมเป็นสูตร แก้เลขแล้วคำนวณใหม่</p>
           {message && <p role="status">{message}</p>}
         </div>
       </div>
