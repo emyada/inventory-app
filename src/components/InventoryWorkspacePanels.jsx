@@ -14,6 +14,7 @@ import {filterRequests,employeeStatus} from '../lib/inventoryRequestUX.js';
 import {cancelEligibility} from '../lib/inventoryWorkflow.js';
 import {isUnfinished, unfinishedJobs, continuationOrder} from '../lib/unfinished.js';
 import {pendingWorkerGroups, UNASSIGNED_WORKER} from '../lib/inventoryRequestPresentation.js';
+import {PickQueuePanel} from './PickQueuePanel.jsx';
 function useRead(load,revision) {
   const [state,setState]=useState(null);
   useRefreshRead(load,rows=>setState({load,revision,busy:false,error:null,rows}),e=>setState({load,revision,busy:false,error:e.message,rows:[]}),[load,revision]);
@@ -56,7 +57,7 @@ async function queueRows(api) {
 }
 export function SupervisorRequests(props) {
  const [view,setView]=useState('queue');
- return <section><h2>จัดการคำขอ</h2><nav className="inv-subnav" aria-label="มุมมองหัวหน้า">{[['queue','คิวหยิบ'],['all','คำขอทั้งหมด']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>setView(key)}>{label}</button>)}</nav><RequestsPanel key={view} {...props} queue={view==='queue'}/></section>;
+ return <section><h2>จัดการคำขอ</h2><nav className="inv-subnav" aria-label="มุมมองหัวหน้า">{[['queue','คิวหยิบ'],['all','คำขอทั้งหมด']].map(([key,label])=><button key={key} aria-pressed={view===key} onClick={()=>setView(key)}>{label}</button>)}</nav>{view==='queue'?<PickQueuePanel key={view} api={props.api} role={props.role} revision={props.revision} onAction={props.onAction} actionBusy={props.actionBusy}/>:<RequestsPanel key={view} {...props} queue={false}/>}</section>;
 }
 export function RequestsPanel({api,role,userId,queue=false,revision,onAction,actionBusy,createBlocked=false}) {
   const state=useRead(useCallback(()=>queue?queueRows(api):loadAllRequests(api),[api,queue]),revision);const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [page,setPage]=useState(0);

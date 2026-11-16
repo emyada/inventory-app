@@ -3,6 +3,7 @@ import {attachRequestSettings,previewReference,requestReferenceContract} from '.
 import {MultiOrderDraft} from './MultiOrderDraft.jsx';
 import {cancellationReasons,cancellationReason,hasIssuedStock,restorationWarning} from '../lib/inventoryCancellation.js';
 import {InventoryOrderConfirmation} from './InventoryOrderConfirmation.jsx';
+import {PickGroupConfirmation} from './PickGroupConfirmation.jsx';
 import {ModalHeader} from './InventoryUI.jsx';
 import {X} from 'lucide-react';
 import React, {useEffect, useRef, useState, useSyncExternalStore} from 'react';
@@ -102,5 +103,6 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
 
 export function InventoryWorkflowForm(props) {
  if(props.task.kind==='pick') return <InventoryOrderConfirmation {...props}/>;
+ if(props.task.kind==='pick_group') return <PickGroupConfirmation {...props}/>;
  return <LegacyWorkflowForm {...props}/>;
 }
