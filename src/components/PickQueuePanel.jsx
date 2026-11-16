@@ -23,13 +23,13 @@ function useLoad(load, deps) {
   return state;
 }
 
-function PersonCard({group, materials, role, actionBusy, onAction}) {
+function PersonCard({group, materials, role, actionBusy, onAction, checked, onToggle}) {
   let need = [], problem = '';
   if (materials) { try { need = groupRequirements(group.rows, materials); } catch (e) { problem = e.message; } }
   const short = need.filter(r => r.insufficient);
   const blocked = role !== 'admin' || actionBusy || !materials || Boolean(problem) || short.length > 0 || !need.length;
   return <article className="inv-card pq-card">
-    <header className="pq-head"><h3>{group.name}</h3><span>{group.rows.length} ออเดอร์</span></header>
+    <header className="pq-head"><h3>{role === 'admin' && <input type="checkbox" className="pq-select" aria-label={`เลือกทุกออเดอร์ของ ${group.name}`} checked={checked} onChange={onToggle}/>} {group.name}</h3><span>{group.rows.length} ออเดอร์</span></header>
     <ul className="pq-models">{group.models.map(m => <li key={m.category + m.model}><span>{m.label}</span><strong>{m.count}</strong></li>)}</ul>
     <details><summary>ดูออเดอร์และวัตถุดิบ</summary>
       <p className="pq-label">ออเดอร์</p>
@@ -56,6 +56,12 @@ export function PickQueuePanel({api, role, revision, onAction, actionBusy}) {
   const needle = search.trim().toLowerCase();
   const rows = (queue.data || []).filter(r => !needle || `${r.order_ref || ''} ${r.model_name || ''} ${r.staff_name || ''}`.toLowerCase().includes(needle));
   const groups = groupByRequester(rows);
+  const [picked, setPicked] = useState(() => new Set());
+  const allIds = groups.flatMap(g => g.rows.map(r => r.id));
+  const chosenGroups = groups.filter(g => picked.has(g.key));
+  const chosenRows = chosenGroups.flatMap(g => g.rows);
+  const toggle = key => setPicked(p => { const n = new Set(p); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const allOn = groups.length > 0 && chosenGroups.length === groups.length;
   return <section aria-label="คิวหยิบ" className="pq">
     <div className="inv-toolbar"><h2>คิวหยิบของ</h2></div>
     <p className="inv-muted">{groups.length} คน · {groups.reduce((n, g) => n + g.rows.length, 0)} ออเดอร์ รอหยิบ</p>
@@ -64,6 +70,12 @@ export function PickQueuePanel({api, role, revision, onAction, actionBusy}) {
     {queue.error && <p role="alert">{queue.error} กรุณาโหลดใหม่</p>}
     {stock.error && <p role="alert">โหลดยอดคงเหลือไม่สำเร็จ จึงยังติ๊กหยิบไม่ได้ กรุณาโหลดใหม่</p>}
     {!queue.busy && !queue.error && !groups.length && <p className="inv-empty">ไม่มีออเดอร์รอหยิบ</p>}
-    <div className="grid-list">{groups.map(g => <PersonCard key={g.key} group={g} materials={stock.data} role={role} actionBusy={actionBusy} onAction={onAction}/>)}</div>
+    {role === 'admin' && groups.length > 1 && <label className="pq-all"><input type="checkbox" checked={allOn} onChange={() => setPicked(allOn ? new Set() : new Set(groups.map(g => g.key)))}/> เลือกทุกคน ({allIds.length} ออเดอร์)</label>}
+    <div className="grid-list">{groups.map(g => <PersonCard key={g.key} group={g} materials={stock.data} role={role} actionBusy={actionBusy} onAction={onAction} checked={picked.has(g.key)} onToggle={() => toggle(g.key)}/>)}</div>
+    {role === 'admin' && chosenRows.length > 0 && <div className="pq-bulk-bar">
+      <span>เลือกแล้ว {chosenGroups.length} คน · {chosenRows.length} ออเดอร์</span>
+      <button type="button" onClick={() => setPicked(new Set())}>ล้าง</button>
+      <button type="button" className="inv-primary" disabled={actionBusy || !stock.data} onClick={() => onAction({kind: 'pick_group', name: chosenGroups.length === 1 ? chosenGroups[0].name : `${chosenGroups.length} คน`, rows: chosenRows})}>ตรวจและยืนยันหยิบ {chosenRows.length} ออเดอร์</button>
+    </div>}
   </section>;
 }

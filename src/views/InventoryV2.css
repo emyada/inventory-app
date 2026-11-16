@@ -395,3 +395,9 @@
 .store-late{color:#c62828}
 .store-source{font-size:.85em}
 .inv-status.pending{background:#fff4cc;color:#5c4500}
+
+/* bulk pick */
+.pq-bulk-bar{position:sticky;bottom:0;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.6rem 0 calc(.6rem + env(safe-area-inset-bottom,0px));background:var(--surface,#fff);z-index:2}
+.pq-bulk-bar span{flex:1 1 auto}
+.pq-all{display:flex;gap:.4rem;align-items:center;margin:.4rem 0}
+.pq-select{margin-right:.35rem}

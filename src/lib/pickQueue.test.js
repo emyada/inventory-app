@@ -26,3 +26,13 @@ test('group requirements sum across orders and flag shortage against combined st
   assert.equal(groupRequirements(rows, [])[0].insufficient, true);
   assert.throws(() => groupRequirements([row('9', 'x', 'CIEM', 'A', [line('a', 'm1', 1)], {confirmation_contract: undefined})], []));
 });
+
+import {splitByStock} from './pickQueue.js';
+test('splitByStock keeps oldest orders that fit and lists the short ones', () => {
+  const mats = [{id: 'm1', name: 'Tip', unit: 'ชิ้น', qty: '2', is_active: true}];
+  const mk = (id, at) => ({id, order_ref: id, created_at: at, confirmation_contract: 'admin-whole-order-v1', bom_snapshot: [{line_id: id, material_id: 'm1', material_name: 'Tip', unit: 'ชิ้น', qty: '1', picked: false}]});
+  const r = splitByStock([mk('c', '2026-01-03'), mk('a', '2026-01-01'), mk('b', '2026-01-02')], mats);
+  assert.deepEqual(r.fit.map(x => x.id), ['a', 'b']);
+  assert.deepEqual(r.short.map(x => x.row.id), ['c']);
+  assert.deepEqual(r.short[0].lacking, ['Tip']);
+});
