@@ -48,7 +48,7 @@ export function MonthlyReport({api, revision}) {
   const download = () => {
     setMessage('');
     try {
-      saveFile(buildMonthlyWorkbook(report, {stock: stock.data || [], storeItems: store.data?.items || null}));
+      saveFile(buildMonthlyWorkbook(report, {stock: stock.data || [], storeItems: store.data?.items || null, mainSales: store.data?.main_sales || null}));
       const missing = [stock.error && 'ลำดับนับสต็อก', store.error && 'หน้าร้าน'].filter(Boolean);
       if (missing.length) setMessage(`ไฟล์นี้ไม่มีชีต ${missing.join(' และ ')} เพราะโหลดข้อมูลไม่สำเร็จ`);
     } catch (e) { setMessage(e.message || 'สร้างไฟล์ไม่สำเร็จ'); }
@@ -86,6 +86,12 @@ export function MonthlyReport({api, revision}) {
             {report.unfinishedLoss.map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
           {report.waitingPick > 0 && <p className="inv-muted">ยื่นแล้วแต่ยังไม่ได้หยิบ {report.waitingPick} ออเดอร์ (ยังไม่ตัดสต็อก ใช้กระทบยอดตอนนับ)</p>}
           <p className="inv-muted">ไม่นับเป็นยอดผลิต และไม่นับในวัตถุดิบที่ใช้ของเดือนนี้</p>
+        </div>}
+        {(store.data?.main_sales || []).length > 0 && <div className="mr-card"><h3>ขายจากคลังหลัก (หน้าร้าน)</h3>
+          {store.data.main_sales.slice(0, 8).map(m => <div className="mr-row" key={m.material_id || m.name}><span>{m.name}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}
+          {store.data.main_sales.length > 8 && <details><summary>ดูทั้ง {store.data.main_sales.length} รายการ</summary>
+            {store.data.main_sales.slice(8).map(m => <div className="mr-row" key={m.material_id || m.name}><span>{m.name}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
+          <p className="inv-muted">ของที่ตัดจากคลังหลักตอนขายหน้าร้าน ใช้ประกอบการสั่งซื้อ</p>
         </div>}
         <div className="mr-card mr-warn"><h3>ควรสั่งเพิ่ม</h3>
           {combined.busy && <p role="status">กำลังโหลด…</p>}

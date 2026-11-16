@@ -6,7 +6,7 @@ import {ReportTable} from './InventoryReports.jsx';
 import {managementCatalog} from '../lib/inventoryModelCatalog.js';
 import {localDay, reportCSV} from '../lib/inventoryReports.js';
 import {downloadCSV} from '../utils/csv.js';
-import {addToCart, cartLines, linesSummary, parseDuplicateSale, parseQty, storeError, storeSaleStatusLabel, validateSaleTag} from '../lib/storeApi.js';
+import {addToCart, cartLines, linesSummary, parseDuplicateSale, optionalSaleTag, parseQty, storeError, storeSaleStatusLabel, daysWaiting, pendingSummary, PENDING_TAG_WARN_DAYS} from '../lib/storeApi.js';
 
 const fmtTime = value => new Date(value).toLocaleString('th-TH', {timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short'});
 const fmtQty = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 3});
@@ -55,9 +55,13 @@ function useOperation() {
   return {operation, error, setError, run, reset, busy: Boolean(operation)};
 }
 
-/* ---------------- Sell (storefront) ---------------- */
-export function StoreSell({api, revision, onChanged, actionBusy}) {
-  const stock = useStoreRead(() => api.store_list_stock(), revision);
+/* ---------------- Sell (storefront stock, or "อื่นๆ" = main warehouse stock) ---------------- */
+const normalizeStoreItem = i => ({key: `${i.item_kind}:${i.item_id}`, kind: i.item_kind, id: i.item_id, name: i.name, unit: i.unit, qty: Number(i.qty), category: i.category, source: 'store'});
+const normalizeMainItem = i => ({key: `material:${i.material_id}`, kind: 'material', id: i.material_id, name: i.name, unit: i.unit, qty: i.qty == null ? null : Number(i.qty), inStock: Boolean(i.in_stock), pinned: Boolean(i.pinned), source: 'main'});
+
+export function StoreSell({api, role, source = 'store', revision, onChanged, actionBusy}) {
+  const isMain = source === 'main';
+  const stock = useStoreRead(() => (isMain ? api.store_list_main_items() : api.store_list_stock()), revision, [source]);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [tag, setTag] = useState('');
@@ -65,24 +69,29 @@ export function StoreSell({api, revision, onChanged, actionBusy}) {
   const [message, setMessage] = useState('');
   const [duplicate, setDuplicate] = useState(null);
   const op = useOperation();
-  const items = useMemo(() => (stock.data || []).filter(i => i.name.toLowerCase().includes(search.toLowerCase())), [stock.data, search]);
-  const inCart = (kind, id) => cart.find(r => r.kind === kind && r.id === id)?.qty || 0;
+  const pinOp = useOperation();
+  const all = useMemo(() => (stock.data || []).map(isMain ? normalizeMainItem : normalizeStoreItem), [stock.data, isMain]);
+  const items = useMemo(() => all.filter(i => i.name.toLowerCase().includes(search.toLowerCase())), [all, search]);
+  const quick = useMemo(() => all.filter(i => i.pinned && i.inStock), [all]);
+  const inCart = item => cart.find(r => r.kind === item.kind && r.id === item.id && r.source === source)?.qty || 0;
+  const canSeeQty = !isMain || role === 'admin';
 
-  function add(item) {
+  function add(item, rawQty) {
     try {
-      const key = `${item.item_kind}:${item.item_id}`;
-      const qty = parseQty(qtyDraft[key] ?? '1', item.item_kind);
-      if (inCart(item.item_kind, item.item_id) + qty > Number(item.qty)) throw new Error(`ของหน้าร้านมี ${fmtQty(item.qty)} ${item.unit} ใส่เกินไม่ได้`);
-      setCart(addToCart(cart, {kind: item.item_kind, id: item.item_id, name: item.name, unit: item.unit}, qty));
-      setQtyDraft({...qtyDraft, [key]: '1'}); op.setError(null);
+      const qty = parseQty(rawQty ?? qtyDraft[item.key] ?? '1', item.kind);
+      if (isMain && !item.inStock) throw new Error(`${item.name} หมดในคลังหลัก`);
+      if (!isMain && inCart(item) + qty > item.qty) throw new Error(`ของหน้าร้านมี ${fmtQty(item.qty)} ${item.unit} ใส่เกินไม่ได้`);
+      if (isMain && item.qty != null && inCart(item) + qty > item.qty) throw new Error(`คลังหลักมี ${fmtQty(item.qty)} ${item.unit} ใส่เกินไม่ได้`);
+      setCart(addToCart(cart, {kind: item.kind, id: item.id, name: item.name, unit: item.unit, source}, qty));
+      setQtyDraft({...qtyDraft, [item.key]: '1'}); op.setError(null);
     } catch (e) { op.setError(e.message); }
   }
   function submit(e) {
     e.preventDefault(); setMessage(''); setDuplicate(null);
     op.run(() => {
-      const clean = validateSaleTag(tag);
+      const clean = optionalSaleTag(tag);
       if (!cart.length) throw new Error('เลือกสินค้าอย่างน้อย 1 รายการ');
-      return api.store_create_sale({tag: clean, lines: cartLines(cart)});
+      return api.store_create_sale({...(clean ? {tag: clean} : {}), lines: cartLines(cart)});
     });
   }
   function addToExisting() {
@@ -90,7 +99,8 @@ export function StoreSell({api, revision, onChanged, actionBusy}) {
     op.run(() => api.store_add_sale_lines({sale_id: duplicate.sale_id, lines: cartLines(cart)}, {intentKey: `add:${duplicate.sale_id}`}));
   }
   const done = useCallback(result => {
-    setMessage(`บันทึกการขาย ${result?.tag || ''} แล้ว`); setCart([]); setTag(''); setDuplicate(null); op.reset(); onChanged();
+    setMessage(result?.tag ? `บันทึกการขาย ${result.tag} แล้ว` : 'บันทึกแล้ว — ตัดสต็อกแล้ว รอกรอกแท็กทีหลัง (ดูที่ รายการขาย)');
+    setCart([]); setTag(''); setDuplicate(null); op.reset(); onChanged();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset is stable
   }, [onChanged]);
   const failed = useCallback(error => {
@@ -99,45 +109,55 @@ export function StoreSell({api, revision, onChanged, actionBusy}) {
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- stable setters
   }, []);
   const disabled = actionBusy || op.busy;
+  const togglePin = item => pinOp.run(() => api.store_set_pin({material_id: item.id, pinned: !item.pinned}, {intentKey: `pin:${item.id}:${!item.pinned}`}));
 
   return <section className="store-sell">
     <div className="store-sell-pick">
-      <h2>ขายสินค้าหน้าร้าน</h2>
+      <h2>{isMain ? 'อื่นๆ — เบิกจากคลังหลักขายลูกค้า' : 'ขายสินค้าหน้าร้าน'}</h2>
+      {isMain && <p className="inv-muted">ตัดจากคลังหลักทันที (ไม่เข้ายอดหน้าร้าน) ยกเลิกแล้วของคืนคลังหลัก</p>}
+      {isMain && quick.length > 0 && <div className="store-quick" aria-label="ของขายบ่อย">
+        <span className="inv-muted">ของขายบ่อย</span>
+        {quick.map(i => <button type="button" key={i.key} disabled={disabled} onClick={() => add(i, '1')}>+ {i.name}</button>)}
+      </div>}
       <label className="inv-search">ค้นหา<input aria-label="ค้นหาสินค้า" placeholder="ค้นหาสินค้า…" value={search} onChange={e => setSearch(e.target.value)}/></label>
       <ReadNote state={stock}/>
-      {!stock.busy && !stock.error && !items.length && <p className="inv-empty">ไม่มีของให้ขาย — รอหัวหน้าสต๊อกโอนของมาหน้าร้าน</p>}
-      <div className="grid-list">{items.map(i => {
-        const key = `${i.item_kind}:${i.item_id}`;
-        return <article className="inv-card" key={key}>
-          <h3>{i.name}</h3>
-          <p className="inv-muted">{i.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''}</p>
-          <p><strong className="inv-balance">{fmtQty(i.qty - inCart(i.item_kind, i.item_id))}</strong> <span className="inv-muted">{i.unit} คงเหลือ</span></p>
-          <div className="store-add">
-            <input aria-label={`จำนวน ${i.name}`} inputMode="decimal" value={qtyDraft[key] ?? '1'} onChange={e => setQtyDraft({...qtyDraft, [key]: e.target.value})}/>
-            <button type="button" className="inv-primary" disabled={disabled} onClick={() => add(i)}>เพิ่ม</button>
-          </div>
-        </article>;
-      })}</div>
+      {pinOp.error && <p role="alert">{pinOp.error}</p>}
+      {pinOp.operation && <OpResult operation={pinOp.operation} onSuccess={() => { pinOp.reset(); onChanged(); }} onFailure={e => { pinOp.setError(storeError(e)); pinOp.reset(); }}/>}
+      {!stock.busy && !stock.error && !items.length && <p className="inv-empty">{isMain ? 'ไม่พบวัตถุดิบ' : 'ไม่มีของให้ขาย — รอหัวหน้าสต๊อกโอนของมาหน้าร้าน'}</p>}
+      <div className="grid-list store-sell-scroll">{items.map(i => <article className="inv-card" key={i.key}>
+        <div className="inv-toolbar"><h3>{i.name}</h3>
+          {isMain && role === 'admin' && <button type="button" className="inv-icon" aria-pressed={i.pinned} aria-label={i.pinned ? `เอา ${i.name} ออกจากของขายบ่อย` : `ปักหมุด ${i.name} เป็นของขายบ่อย`} disabled={pinOp.busy} onClick={() => togglePin(i)}>{i.pinned ? '★' : '☆'}</button>}</div>
+        {!isMain && <p className="inv-muted">{i.kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''}</p>}
+        <p>{canSeeQty
+          ? <><strong className="inv-balance">{fmtQty(i.qty - inCart(i))}</strong> <span className="inv-muted">{i.unit} คงเหลือ{isMain ? 'ในคลังหลัก' : ''}</span></>
+          : <strong className={i.inStock ? 'inv-ok' : 'inv-bad'}>{i.inStock ? 'มีของ' : 'หมด'}</strong>}</p>
+        <div className="store-add">
+          <input aria-label={`จำนวน ${i.name}`} inputMode="decimal" value={qtyDraft[i.key] ?? '1'} onChange={e => setQtyDraft({...qtyDraft, [i.key]: e.target.value})}/>
+          <button type="button" className="inv-primary" disabled={disabled || (isMain && !i.inStock)} onClick={() => add(i)}>เพิ่ม</button>
+        </div>
+      </article>)}</div>
     </div>
     <form className="store-sell-cart inv-card" onSubmit={submit}>
-      <h3>ออเดอร์นี้</h3>
-      <label>รหัสแท็กการขาย <b>(บังคับ)</b>
-        <input required value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder="เช่น เลขออเดอร์ Shipnity" aria-describedby="tag-help" autoComplete="off"/>
+      <h3>ออเดอร์นี้{isMain ? ' (จากคลังหลัก)' : ''}</h3>
+      <label>รหัสแท็กการขาย <span className="inv-muted">(ไม่บังคับ — ใส่ทีหลังได้)</span>
+        <input value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder="เลข Shopify ถ้ามีแล้ว" aria-describedby="tag-help" autoComplete="off"/>
       </label>
-      <p id="tag-help" className="inv-muted">1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ใหญ่เล็ก ช่องว่าง หรือขีด) หนึ่งออเดอร์ใส่ได้หลายรายการ</p>
+      <p id="tag-help" className="inv-muted">เว้นว่าง = ตัดสต็อกทันที แล้วขึ้น “รอแท็ก” ให้กรอกทีหลัง · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</p>
       {duplicate && <div role="alert" className="store-duplicate">
         <p><b>แท็ก {duplicate.tag || tag} ถูกใช้แล้ว</b>{duplicate.seller_name ? ` โดย ${duplicate.seller_name}` : ''}{duplicate.created_at ? ` เมื่อ ${fmtTime(duplicate.created_at)}` : ''}</p>
         <p>ถ้าเป็นลูกค้าคนเดิมสั่งเพิ่ม ให้เพิ่มรายการในออเดอร์เดิม ถ้าเป็นคนละออเดอร์ให้แก้แท็ก</p>
         {cart.length > 0 && duplicate.sale_id && <button type="button" disabled={disabled} onClick={addToExisting}>เพิ่มรายการเหล่านี้ในออเดอร์เดิม</button>}
       </div>}
       {!cart.length && <p className="inv-muted">ยังไม่ได้เลือกสินค้า</p>}
-      <ul className="inv-bom-rows">{cart.map(r => <li key={`${r.kind}:${r.id}`}>
+      <ul className="inv-bom-rows store-cart-rows">{cart.map(r => <li key={`${r.kind}:${r.id}:${r.source}`}>
         <span>{r.name}<small>{r.kind === 'model' ? 'ชุด' : r.unit}</small></span><strong>×{fmtQty(r.qty)}</strong>
         <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
       </li>)}</ul>
       {op.error && <p role="alert">{op.error}</p>}
       {message && <p role="status" className="inv-success">{message}</p>}
-      <button type="submit" disabled={disabled || !cart.length || !tag.trim()}>บันทึกการขาย</button>
+      <div className="store-sticky-bar">
+        <button type="submit" className="inv-primary" disabled={disabled || !cart.length}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
+      </div>
       {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
     </form>
   </section>;
@@ -262,6 +282,44 @@ function CancelSale({api, sale, onDone, onClose}) {
   </form>;
 }
 const saleColumns = [['tag', 'แท็กการขาย'], ['status_label', 'สถานะ'], ['created_at_label', 'เวลา'], ['seller_name', 'ผู้ขาย'], ['items', 'รายการ'], ['cancel_reason', 'เหตุผลยกเลิก']];
+const saleSource = s => ((s.lines || []).some(l => l.source === 'main') ? ((s.lines || []).every(l => l.source === 'main') ? 'จากคลังหลัก' : 'หน้าร้าน + คลังหลัก') : 'จากหน้าร้าน');
+
+function SetTagForm({api, sale, onDone}) {
+  const [tag, setTag] = useState('');
+  const op = useOperation();
+  function submit(e) {
+    e.preventDefault();
+    op.run(() => api.store_set_sale_tag({sale_id: sale.sale_id, tag: validateSaleTag(tag)}, {intentKey: `tag:${sale.sale_id}:${tag.trim()}`}));
+  }
+  const failed = useCallback(error => {
+    const dup = parseDuplicateSale(error);
+    op.setError(dup ? `แท็ก ${dup.tag || tag} ถูกใช้แล้ว${dup.seller_name ? ` โดย ${dup.seller_name}` : ''}` : storeError(error)); op.reset();
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- stable setters
+  }, [tag]);
+  return <form className="store-adjust" onSubmit={submit}>
+    <label>กรอกแท็ก (เลข Shopify)<input required value={tag} onChange={e => { setTag(e.target.value); op.setError(null); }} autoComplete="off"/></label>
+    {op.error && <p role="alert">{op.error}</p>}
+    <button type="submit" className="inv-primary" disabled={op.busy || !tag.trim()}>บันทึกแท็ก</button>
+    {op.operation && <OpResult operation={op.operation} onSuccess={() => { op.reset(); onDone(); }} onFailure={failed}/>}
+  </form>;
+}
+
+function SaleCard({api, s, role, userId, actionBusy, cancelling, setCancelling, onChanged}) {
+  const late = s.pending ? daysWaiting(s.created_at) : 0;
+  return <article className="inv-card" key={s.sale_id}>
+    <div className="inv-toolbar"><h3>{s.tag || 'ยังไม่มีแท็ก'}</h3>
+      <span className={`inv-status ${s.status === 'cancelled' ? 'cancelled' : s.pending ? 'pending' : 'completed'}`}>{storeSaleStatusLabel(s.status, s.pending)}</span></div>
+    <p className="inv-muted">{s.created_at_label} · {s.seller_name || '—'} · <span className="store-source">{saleSource(s)}</span>
+      {late >= PENDING_TAG_WARN_DAYS && <> · <b className="store-late">ค้างแท็ก {late} วัน</b></>}</p>
+    <ul className="store-lines">{s.lines.map((l, i) => <li key={i}>{l.name} <strong>×{fmtQty(l.qty)}</strong> <span className="inv-muted">{l.item_kind === 'model' ? 'ชุด' : l.unit}{l.source === 'main' ? ' · คลังหลัก' : ''}</span></li>)}</ul>
+    {s.status === 'cancelled' && <p className="inv-muted">ยกเลิก: {s.cancel_reason}</p>}
+    {s.pending && (role === 'admin' || s.seller_id === userId) && <SetTagForm api={api} sale={s} onDone={onChanged}/>}
+    {s.status === 'active' && (role === 'admin' || s.seller_id === userId) && (cancelling === s.sale_id
+      ? <CancelSale api={api} sale={s} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); onChanged(); }}/>
+      : <button type="button" disabled={actionBusy} onClick={() => setCancelling(s.sale_id)}>ยกเลิกการขายนี้</button>)}
+  </article>;
+}
+
 export function StoreSales({api, role, userId, revision, onChanged, actionBusy}) {
   const today = localDay(new Date());
   const [from, setFrom] = useState(today.slice(0, 8) + '01');
@@ -269,8 +327,11 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
   const [search, setSearch] = useState('');
   const [cancelling, setCancelling] = useState(null);
   const state = useStoreRead(() => api.store_list_sales({date_from: from, date_to: to, timezone: 'Asia/Bangkok', limit: 1000}), revision, [from, to]);
-  const rows = useMemo(() => (state.data || []).filter(s => !search.trim() || s.tag.toLowerCase().includes(search.trim().toLowerCase()))
-    .map(s => ({...s, status_label: storeSaleStatusLabel(s.status), created_at_label: fmtTime(s.created_at), items: linesSummary(s.lines)})), [state.data, search]);
+  const rows = useMemo(() => (state.data || []).filter(s => !search.trim() || (s.tag || '').toLowerCase().includes(search.trim().toLowerCase()))
+    .map(s => ({...s, status_label: storeSaleStatusLabel(s.status, s.pending), created_at_label: fmtTime(s.created_at), items: linesSummary(s.lines)})), [state.data, search]);
+  const pending = rows.filter(s => s.pending && s.status === 'active').sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const rest = rows.filter(s => !(s.pending && s.status === 'active'));
+  const card = s => <SaleCard key={s.sale_id} api={api} s={s} role={role} userId={userId} actionBusy={actionBusy} cancelling={cancelling} setCancelling={setCancelling} onChanged={onChanged}/>;
   return <section>
     <div className="inv-toolbar"><h2>รายการขายหน้าร้าน</h2>
       <button type="button" disabled={!rows.length} onClick={() => downloadCSV(`store_sales_${from}_${to}.csv`, reportCSV(rows, saleColumns, {from, to, timezone: 'Asia/Bangkok'}))}>ส่งออก CSV</button></div>
@@ -280,27 +341,32 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
       <label>ค้นหาแท็ก<input value={search} onChange={e => setSearch(e.target.value)} placeholder="แท็กการขาย"/></label>
     </div>
     <ReadNote state={state}/>
-    {!state.busy && !state.error && !rows.length && <p className="inv-empty">ไม่มีรายการขายในช่วงที่เลือก</p>}
-    <div className="store-sales-list">{rows.map(s => <article className="inv-card" key={s.sale_id}>
-      <div className="inv-toolbar"><h3>{s.tag}</h3><span className={`inv-status ${s.status === 'cancelled' ? 'cancelled' : 'completed'}`}>{s.status_label}</span></div>
-      <p className="inv-muted">{s.created_at_label} · {s.seller_name || '—'}</p>
-      <ul className="store-lines">{s.lines.map((l, i) => <li key={i}>{l.name} <strong>×{fmtQty(l.qty)}</strong> <span className="inv-muted">{l.item_kind === 'model' ? 'ชุด' : l.unit}</span></li>)}</ul>
-      {s.status === 'cancelled' && <p className="inv-muted">ยกเลิก: {s.cancel_reason}</p>}
-      {s.status === 'active' && (role === 'admin' || s.seller_id === userId) && (cancelling === s.sale_id
-        ? <CancelSale api={api} sale={s} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); onChanged(); }}/>
-        : <button type="button" disabled={actionBusy} onClick={() => setCancelling(s.sale_id)}>ยกเลิกการขายนี้</button>)}
-    </article>)}</div>
+    {pending.length > 0 && <div className="store-pending-group">
+      <h3>รอแท็ก ({pending.length} ใบ)</h3>
+      <p className="inv-muted">ตัดสต็อกแล้ว แต่ยังไม่ได้กรอกเลข Shopify — แสดงเสมอไม่ว่าเลือกวันไหน</p>
+      <div className="store-sales-list">{pending.map(card)}</div>
+    </div>}
+    {!state.busy && !state.error && !rest.length && !pending.length && <p className="inv-empty">ไม่มีรายการขายในช่วงที่เลือก</p>}
+    <div className="store-sales-list">{rest.map(card)}</div>
   </section>;
 }
 
 /* ---------------- Workspace shell ---------------- */
 export function StoreWorkspace({api, role, userId, revision, onChanged, actionBusy}) {
-  const modes = role === 'store' ? [['sell', 'ขาย'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['report', 'รายงาน']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย'], ['report', 'รายงาน']];
+  const modes = role === 'store' ? [['sell', 'ขาย'], ['other', 'อื่นๆ'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['report', 'รายงาน']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย'], ['other', 'อื่นๆ'], ['report', 'รายงาน']];
   const [mode, setMode] = useState(modes[0][0]);
   const [transfer, setTransfer] = useState(false);
+  const today = localDay(new Date());
+  const pendingRead = useStoreRead(() => api.store_list_sales({date_from: today, date_to: today, timezone: 'Asia/Bangkok', limit: 1000}), revision);
+  const pend = useMemo(() => pendingSummary((pendingRead.data || []).filter(s => s.status === 'active')), [pendingRead.data]);
   return <>
-    <nav className="inv-subnav" aria-label="หน้าร้าน">{modes.map(([key, label]) => <button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</nav>
-    {mode === 'sell' && <StoreSell api={api} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    <nav className="inv-subnav" aria-label="หน้าร้าน">{modes.map(([key, label]) => <button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}{key === 'sales' && pend.total > 0 && <span className="store-badge" aria-label={`รอแท็ก ${pend.total} ใบ`}>{pend.total}</span>}</button>)}</nav>
+    {pend.total > 0 && <div role="status" className={`store-pending-banner${pend.overdue ? ' late' : ''}`}>
+      รอกรอกแท็ก {pend.total} ใบ{pend.overdue > 0 && ` — ค้างเกิน ${PENDING_TAG_WARN_DAYS} วัน ${pend.overdue} ใบ`}
+      {mode !== 'sales' && <button type="button" onClick={() => setMode('sales')}>ไปกรอกแท็ก</button>}
+    </div>}
+    {mode === 'sell' && <StoreSell api={api} role={role} source="store" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    {mode === 'other' && <StoreSell api={api} role={role} source="main" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={() => setTransfer(true)}/>}
     {mode === 'sales' && <StoreSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'report' && <StoreReports api={api} revision={revision}/>}
@@ -319,6 +385,8 @@ export function StoreReports({api, revision}) {
   const report = useStoreRead(() => api.store_report({date_from: from, date_to: to, timezone: 'Asia/Bangkok'}), revision, [from, to]);
   const stock = useStoreRead(() => api.store_list_stock(), revision);
   const items = useMemo(() => (report.data?.items || []).map(r => ({...r, kind_label: r.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'})), [report.data]);
+  const mainSales = useMemo(() => report.data?.main_sales || [], [report.data]);
+  const pendingRows = useMemo(() => (report.data?.pending || []).map(p => ({...p, created_at_label: fmtTime(p.created_at), waiting: daysWaiting(p.created_at), items: linesSummary(p.lines)})), [report.data]);
   const sets = useMemo(() => (stock.data || []).filter(r => r.item_kind === 'model').map(r => ({name: r.name, category: r.category, store_sets: r.qty})), [stock.data]);
   return <section className="store-reports">
     <h2>รายงานหน้าร้าน</h2>
@@ -336,6 +404,10 @@ export function StoreReports({api, revision}) {
     {!report.busy && !report.error && <>
       <button type="button" disabled={!items.length} onClick={() => downloadCSV(`store_report_${from}_${to}.csv`, reportCSV(items, storeReportColumns, {from, to, timezone: 'Asia/Bangkok'}))}>ส่งออกรายงานหน้าร้าน CSV</button>
       <ReportTable rows={items} columns={storeReportColumns}/>
+      <h3>ขายจากคลังหลัก (อื่นๆ)</h3>
+      {mainSales.length ? <ReportTable rows={mainSales} columns={[['name', 'วัตถุดิบ'], ['unit', 'หน่วย'], ['qty', 'จำนวนที่ขาย']]}/> : <p className="inv-empty">ไม่มีการขายจากคลังหลักในช่วงนี้</p>}
+      <h3>รอแท็ก</h3>
+      {pendingRows.length ? <ReportTable rows={pendingRows} columns={[['created_at_label', 'เวลา'], ['waiting', 'ค้าง (วัน)'], ['seller_name', 'ผู้ขาย'], ['items', 'รายการ']]}/> : <p className="inv-empty">ไม่มีใบที่รอแท็ก</p>}
     </>}
   </section>;
 }

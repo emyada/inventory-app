@@ -164,9 +164,14 @@ function storeSheet(items) {
   });
   return {name: 'หน้าร้าน', widths: [36, 14, 8, 10, 16, 10, 12, 10, 10, 12], rows};
 }
+function mainSalesSheet(items) {
+  const rows = [['วัตถุดิบ', 'หน่วย', 'ขายจากคลังหน้าร้าน (อื่นๆ)'].map(H)];
+  items.forEach(r => rows.push([T(r.name), T(r.unit), N(Number(r.qty))]));
+  return {name: 'ขายจากคลังหลัก', widths: [44, 8, 26], rows};
+}
 const sheetNameFor = cat => cat.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 31);
 
-export function buildMonthlyWorkbook(report, {stock = [], storeItems = null} = {}) {
+export function buildMonthlyWorkbook(report, {stock = [], storeItems = null, mainSales = null} = {}) {
   const prod = rawProduction(report);
   const sheets = [summarySheet(report, prod.rows)];
   const allMaterials = new Map();
@@ -186,6 +191,7 @@ export function buildMonthlyWorkbook(report, {stock = [], storeItems = null} = {
   sheets.push(prod.sheet, rawMaterials(report));
   if (stock.length) sheets.push(stockSheet(stock, report));
   if (storeItems?.length) sheets.push(storeSheet(storeItems));
+  if (mainSales?.length) sheets.push(mainSalesSheet(mainSales));
   return {
     filename: `stock_report_${report.from.slice(0, 7)}.xlsx`, type: XLSX_TYPE,
     sheetNames: sheets.map(s => s.name), body: reportFilesZIP(workbookFiles(sheets)),
