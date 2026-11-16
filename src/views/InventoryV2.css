@@ -382,3 +382,16 @@
 
 .inventory-v2 .mr-unfinished { border-left: 4px solid #D97706; }
 .inventory-v2 .mr-unfinished small { display: block; color: var(--inv-muted); font-size: 12px; }
+
+/* sell from main ("อื่นๆ"), pending tag, quick items */
+.store-sell-scroll{max-height:55vh;overflow-y:auto;overscroll-behavior:contain}
+.store-quick{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.4rem 0}
+.store-sticky-bar{position:sticky;bottom:0;padding:.6rem 0 calc(.6rem + env(safe-area-inset-bottom,0px));background:var(--surface,#fff);z-index:2}
+.store-sticky-bar button{width:100%}
+.store-pending-group{margin:1rem 0;padding:.6rem;border:1px solid #e0a800;border-radius:10px;background:rgba(224,168,0,.08)}
+.store-pending-banner{display:flex;gap:.6rem;align-items:center;justify-content:space-between;margin:.5rem 0;padding:.55rem .8rem;border-radius:10px;background:#fff4cc;color:#5c4500}
+.store-pending-banner.late{background:#fde2e2;color:#8a1c1c}
+.store-badge{display:inline-block;min-width:1.2rem;margin-left:.35rem;padding:0 .35rem;border-radius:999px;background:#d33;color:#fff;font-size:.75rem;line-height:1.2rem;text-align:center}
+.store-late{color:#c62828}
+.store-source{font-size:.85em}
+.inv-status.pending{background:#fff4cc;color:#5c4500}
