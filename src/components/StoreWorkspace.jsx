@@ -120,7 +120,7 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
         <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
       </li>)}</ul>
       <div className="store-tag-row">
-        <input aria-label="รหัสแท็กการขาย" required={!isMain} value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย (เลข Shopify) *'} aria-describedby="tag-help" autoComplete="off"/>
+        <input aria-label="รหัสแท็กการขาย" required={!isMain} value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย (เลข Shipnity) *'} aria-describedby="tag-help" autoComplete="off"/>
         <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim())}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
       </div>
       <p id="tag-help" className="inv-muted store-tag-help">{isMain ? 'เว้นว่าง = ตัดคลังหลักทันที แล้วไปกรอกแท็กทีหลังที่ “รายการขาย”' : <><b className="store-req">ต้องใส่แท็ก</b> · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</>}</p>
@@ -294,7 +294,7 @@ function SetTagForm({api, sale, onDone}) {
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- stable setters
   }, [tag]);
   return <form className="store-adjust" onSubmit={submit}>
-    <label>กรอกแท็ก (เลข Shopify)<input required value={tag} onChange={e => { setTag(e.target.value); op.setError(null); }} autoComplete="off"/></label>
+    <label>กรอกแท็ก (เลข Shipnity)<input required value={tag} onChange={e => { setTag(e.target.value); op.setError(null); }} autoComplete="off"/></label>
     {op.error && <p role="alert">{op.error}</p>}
     <button type="submit" className="inv-primary" disabled={op.busy || !tag.trim()}>บันทึกแท็ก</button>
     {op.operation && <OpResult operation={op.operation} onSuccess={() => { op.reset(); onDone(); }} onFailure={failed}/>}
@@ -340,7 +340,7 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
     <ReadNote state={state}/>
     {pending.length > 0 && <div className="store-pending-group">
       <h3>รอแท็ก ({pending.length} ใบ)</h3>
-      <p className="inv-muted">ตัดสต็อกแล้ว แต่ยังไม่ได้กรอกเลข Shopify — แสดงเสมอไม่ว่าเลือกวันไหน</p>
+      <p className="inv-muted">ตัดสต็อกแล้ว แต่ยังไม่ได้กรอกเลข Shipnity — แสดงเสมอไม่ว่าเลือกวันไหน</p>
       <div className="store-sales-list">{pending.map(card)}</div>
     </div>}
     {!state.busy && !state.error && !rest.length && !pending.length && <p className="inv-empty">ไม่มีรายการขายในช่วงที่เลือก</p>}
