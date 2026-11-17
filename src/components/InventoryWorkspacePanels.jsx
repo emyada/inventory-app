@@ -97,17 +97,25 @@ function ContinueJob({r,role,actionBusy,onAction,all}) {
   </div>;
 }
 function RequestCard({r,queue,employee,view,role,userId,actionBusy,onAction,compact=false,allRows=[]}) {
-  return <article className={compact?'inv-request-detail':'inv-card'} id={compact?`request-detail-${r.id}`:undefined}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p><span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span>
-      <details open={compact||undefined}><summary>รายละเอียดคำขอ</summary><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
+  const status=<span className={'inv-status '+r.workflow_state}>{employee?employeeStatus(r):WORKFLOW_LABELS[r.workflow_state]||r.workflow_state}</span>;
+  const inner=<><p>{r.staff_name} · {new Date(r.created_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p><p>ทั้งหมด {r.total_lines} · หยิบแล้ว {r.picked_lines} · ค้าง {r.actionable_pending_lines ?? r.pending_lines}</p>{r.note&&<p>{r.note}</p>}
       {!queue&&<><h4>วันที่เบิกจริง</h4>{(r.issue_times||[]).length?r.issue_times.map((at,i)=><p key={i}>{new Date(at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})}</p>):<p>ไม่มีหลักฐานวันเบิกในบัญชี V2</p>}</>}
       {r.accounting_evidence==='unverified'&&<p>ยืนยันว่าผลิตและส่งแล้ว แต่หลักฐานการตัดสต๊อกเดิมยังไม่ยืนยัน เก็บข้อมูลเดิมไว้</p>}
-      <h4>วัตถุดิบที่บันทึกไว้</h4>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</details>
+      <h4>วัตถุดิบที่บันทึกไว้</h4>{(queue?manualPendingLines(r):r.bom_snapshot||[]).map((b,i)=><p key={b.line_id||i}>{b.material_name} · {b.qty} {b.unit} · {r.workflow_state==='legacy_completed_shipped'?'Historical snapshot; issue unverified':b.picked?'เบิกแล้ว':b.requires_picking===false?'อัตโนมัติเมื่อเบิกครบ':'รอหยิบ'}</p>)}</>;
+  const actions=<>
       {!queue&&(!employee||view==='active')&&(cancelEligibility(r,role,userId)?<p className="inv-muted">{cancelEligibility(r,role,userId)}</p>:<button disabled={actionBusy} onClick={()=>onAction({kind:'cancel',row:r})}>{Number(r.picked_lines)>0?'ยกเลิกและคืนเต็มจำนวน':'ยกเลิกคำขอ'}</button>)}
       {!queue&&canCloseNotCompleted(r,role)&&<button disabled={actionBusy} onClick={()=>onAction({kind:'close_not_completed',row:r})}>ผลิตไม่สำเร็จ / คืนตามจริง</button>}
       {isUnfinished(r)&&r.model_id&&<ContinueJob r={r} role={role} actionBusy={actionBusy} onAction={onAction} all={allRows}/>}
       {r.closure_kind==='production_not_completed'&&<div><p>ปิดงานแล้ว — ไม่รวมเป็นผลิตสำเร็จ</p>{(r.return_summary||[]).map(line=>{const b=r.bom_snapshot?.find(x=>x.line_id===line.line_id);return <p key={line.line_id}>{b?.material_name} · คืนจริง {line.returned_qty} · ใช้ไป/ไม่คืน {line.consumed_qty} {b?.unit}</p>;})}</div>}
+</>;
+  // Staff list: one tappable line per request (order · model · status); everything else opens on tap.
+  if(employee&&!compact)return <article className="inv-card req-row"><details><summary><strong>{r.order_ref}</strong><span className="req-model">{r.model_name}</span>{status}</summary>{inner}{actions}</details></article>;
+  return <article className={compact?'inv-request-detail':'inv-card'} id={compact?`request-detail-${r.id}`:undefined}><h3>{r.order_ref}</h3><p>{r.model_name} · {r.category}</p>{status}
+      <details open={compact||undefined}><summary>รายละเอียดคำขอ</summary>{inner}</details>
+      {actions}
     </article>;
 }
+
 export function CompactRequestList({rows,queue=false,...detailProps}) {
   const [selectedId,setSelectedId]=useState(null);
   const groups=queue?pendingWorkerGroups(rows):[{key:'all',name:'ทุกหมวดสินค้า',rows}];

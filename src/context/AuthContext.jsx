@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
     return supabase.auth.signInWithPassword({ email, password });
   }
   async function signOut() {
-    return supabase.auth.signOut();
+    return supabase.auth.signOut({scope: 'local'});
   }
 
   const role = profile?.role || 'staff'; // 'admin' | 'staff' | 'purchasing'
