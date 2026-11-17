@@ -6,7 +6,7 @@ import {ReportTable} from './InventoryReports.jsx';
 import {managementCatalog} from '../lib/inventoryModelCatalog.js';
 import {localDay, reportCSV} from '../lib/inventoryReports.js';
 import {downloadCSV} from '../utils/csv.js';
-import {addToCart, cartLines, linesSummary, parseDuplicateSale, optionalSaleTag, parseQty, storeError, storeSaleStatusLabel, daysWaiting, pendingSummary, PENDING_TAG_WARN_DAYS} from '../lib/storeApi.js';
+import {addToCart, cartLines, linesSummary, parseDuplicateSale, optionalSaleTag, parseQty, storeError, storeSaleStatusLabel, daysWaiting, pendingSummary, PENDING_TAG_WARN_DAYS, validateSaleTag} from '../lib/storeApi.js';
 
 const fmtTime = value => new Date(value).toLocaleString('th-TH', {timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short'});
 const fmtQty = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 3});
@@ -89,7 +89,7 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
   function submit(e) {
     e.preventDefault(); setMessage(''); setDuplicate(null);
     op.run(() => {
-      const clean = optionalSaleTag(tag);
+      const clean = isMain ? optionalSaleTag(tag) : validateSaleTag(tag);
       if (!cart.length) throw new Error('เลือกสินค้าอย่างน้อย 1 รายการ');
       return api.store_create_sale({...(clean ? {tag: clean} : {}), lines: cartLines(cart)});
     });
@@ -112,6 +112,27 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
   const togglePin = item => pinOp.run(() => api.store_set_pin({material_id: item.id, pinned: !item.pinned}, {intentKey: `pin:${item.id}:${!item.pinned}`}));
 
   return <section className="store-sell">
+    <form className="store-sell-cart inv-card" onSubmit={submit}>
+      <h3>ออเดอร์นี้{isMain ? ' (จากคลังหลัก)' : ''} <span className="inv-muted">· {cart.length} รายการ</span>{cart.length > 0 && <button type="button" className="store-clear" disabled={disabled} onClick={() => setCart([])}>ล้าง</button>}</h3>
+      {!cart.length && <p className="inv-muted store-cart-empty">ยังไม่ได้เลือกสินค้า</p>}
+      <ul className="inv-bom-rows store-cart-rows">{cart.map(r => <li key={`${r.kind}:${r.id}:${r.source}`}>
+        <span>{r.name}<small>{r.kind === 'model' ? 'ชุด' : r.unit}</small></span><strong>×{fmtQty(r.qty)}</strong>
+        <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
+      </li>)}</ul>
+      <div className="store-tag-row">
+        <input aria-label="รหัสแท็กการขาย" required={!isMain} value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย (เลข Shopify) *'} aria-describedby="tag-help" autoComplete="off"/>
+        <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim())}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
+      </div>
+      <p id="tag-help" className="inv-muted store-tag-help">{isMain ? 'เว้นว่าง = ตัดคลังหลักทันที แล้วไปกรอกแท็กทีหลังที่ “รายการขาย”' : <><b className="store-req">ต้องใส่แท็ก</b> · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</>}</p>
+      {duplicate && <div role="alert" className="store-duplicate">
+        <p><b>แท็ก {duplicate.tag || tag} ถูกใช้แล้ว</b>{duplicate.seller_name ? ` โดย ${duplicate.seller_name}` : ''}{duplicate.created_at ? ` เมื่อ ${fmtTime(duplicate.created_at)}` : ''}</p>
+        <p>ถ้าเป็นลูกค้าคนเดิมสั่งเพิ่ม ให้เพิ่มรายการในออเดอร์เดิม ถ้าเป็นคนละออเดอร์ให้แก้แท็ก</p>
+        {cart.length > 0 && duplicate.sale_id && <button type="button" disabled={disabled} onClick={addToExisting}>เพิ่มรายการเหล่านี้ในออเดอร์เดิม</button>}
+      </div>}
+      {op.error && <p role="alert">{op.error}</p>}
+      {message && <p role="status" className="inv-success">{message}</p>}
+      {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
+    </form>
     <div className="store-sell-pick">
       <h2>{isMain ? 'อื่นๆ — เบิกจากคลังหลักขายลูกค้า' : 'ขายสินค้าหน้าร้าน'}</h2>
       {isMain && <p className="inv-muted">ตัดจากคลังหลักทันที (ไม่เข้ายอดหน้าร้าน) ยกเลิกแล้วของคืนคลังหลัก</p>}
@@ -137,29 +158,6 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
         </div>
       </article>)}</div>
     </div>
-    <form className="store-sell-cart inv-card" onSubmit={submit}>
-      <h3>ออเดอร์นี้{isMain ? ' (จากคลังหลัก)' : ''}</h3>
-      <label>รหัสแท็กการขาย <span className="inv-muted">(ไม่บังคับ — ใส่ทีหลังได้)</span>
-        <input value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder="เลข Shopify ถ้ามีแล้ว" aria-describedby="tag-help" autoComplete="off"/>
-      </label>
-      <p id="tag-help" className="inv-muted">เว้นว่าง = ตัดสต็อกทันที แล้วขึ้น “รอแท็ก” ให้กรอกทีหลัง · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</p>
-      {duplicate && <div role="alert" className="store-duplicate">
-        <p><b>แท็ก {duplicate.tag || tag} ถูกใช้แล้ว</b>{duplicate.seller_name ? ` โดย ${duplicate.seller_name}` : ''}{duplicate.created_at ? ` เมื่อ ${fmtTime(duplicate.created_at)}` : ''}</p>
-        <p>ถ้าเป็นลูกค้าคนเดิมสั่งเพิ่ม ให้เพิ่มรายการในออเดอร์เดิม ถ้าเป็นคนละออเดอร์ให้แก้แท็ก</p>
-        {cart.length > 0 && duplicate.sale_id && <button type="button" disabled={disabled} onClick={addToExisting}>เพิ่มรายการเหล่านี้ในออเดอร์เดิม</button>}
-      </div>}
-      {!cart.length && <p className="inv-muted">ยังไม่ได้เลือกสินค้า</p>}
-      <ul className="inv-bom-rows store-cart-rows">{cart.map(r => <li key={`${r.kind}:${r.id}:${r.source}`}>
-        <span>{r.name}<small>{r.kind === 'model' ? 'ชุด' : r.unit}</small></span><strong>×{fmtQty(r.qty)}</strong>
-        <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
-      </li>)}</ul>
-      {op.error && <p role="alert">{op.error}</p>}
-      {message && <p role="status" className="inv-success">{message}</p>}
-      <div className="store-sticky-bar">
-        <button type="submit" className="inv-primary" disabled={disabled || !cart.length}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
-      </div>
-      {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
-    </form>
   </section>;
 }
 
