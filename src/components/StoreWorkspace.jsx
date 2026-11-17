@@ -134,24 +134,23 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
       {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
     </form>
     <div className="store-sell-pick">
-      <h2>{isMain ? 'อื่นๆ — เบิกจากคลังหลักขายลูกค้า' : 'ขายสินค้าหน้าร้าน'}</h2>
-      {isMain && <p className="inv-muted">ตัดจากคลังหลักทันที (ไม่เข้ายอดหน้าร้าน) ยกเลิกแล้วของคืนคลังหลัก</p>}
       {isMain && quick.length > 0 && <div className="store-quick" aria-label="ของขายบ่อย">
-        <span className="inv-muted">ของขายบ่อย</span>
+        <span className="store-quick-label" aria-hidden="true">★</span>
         {quick.map(i => <button type="button" key={i.key} disabled={disabled} onClick={() => add(i, '1')}>+ {i.name}</button>)}
       </div>}
-      <label className="inv-search">ค้นหา<input aria-label="ค้นหาสินค้า" placeholder="ค้นหาสินค้า…" value={search} onChange={e => setSearch(e.target.value)}/></label>
+      <input className="store-search" aria-label="ค้นหาสินค้า" placeholder={isMain ? 'ค้นหาวัตถุดิบในคลังหลัก…' : 'ค้นหาสินค้า…'} value={search} onChange={e => setSearch(e.target.value)}/>
       <ReadNote state={stock}/>
       {pinOp.error && <p role="alert">{pinOp.error}</p>}
       {pinOp.operation && <OpResult operation={pinOp.operation} onSuccess={() => { pinOp.reset(); onChanged(); }} onFailure={e => { pinOp.setError(storeError(e)); pinOp.reset(); }}/>}
       {!stock.busy && !stock.error && !items.length && <p className="inv-empty">{isMain ? 'ไม่พบวัตถุดิบ' : 'ไม่มีของให้ขาย — รอหัวหน้าสต๊อกโอนของมาหน้าร้าน'}</p>}
-      <div className="grid-list store-sell-scroll">{items.map(i => <article className="inv-card" key={i.key}>
-        <div className="inv-toolbar"><h3>{i.name}</h3>
-          {isMain && role === 'admin' && <button type="button" className="inv-icon" aria-pressed={i.pinned} aria-label={i.pinned ? `เอา ${i.name} ออกจากของขายบ่อย` : `ปักหมุด ${i.name} เป็นของขายบ่อย`} disabled={pinOp.busy} onClick={() => togglePin(i)}>{i.pinned ? '★' : '☆'}</button>}</div>
-        {!isMain && <p className="inv-muted">{i.kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''}</p>}
-        <p>{canSeeQty
-          ? <><strong className="inv-balance">{fmtQty(i.qty - inCart(i))}</strong> <span className="inv-muted">{i.unit} คงเหลือ{isMain ? 'ในคลังหลัก' : ''}</span></>
-          : <strong className={i.inStock ? 'inv-ok' : 'inv-bad'}>{i.inStock ? 'มีของ' : 'หมด'}</strong>}</p>
+      <div className="store-sell-scroll">{items.map(i => <article className="inv-card store-item" key={i.key}>
+        <div className="store-item-info">
+          <h3>{i.name}</h3>
+          <p className="inv-muted">{!isMain && <>{i.kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''} · </>}{canSeeQty
+            ? <><strong className="inv-balance">{fmtQty(i.qty - inCart(i))}</strong> {i.unit}{isMain ? ' ในคลังหลัก' : ''}</>
+            : <strong className={i.inStock ? 'inv-ok' : 'inv-bad'}>{i.inStock ? 'มีของ' : 'หมด'}</strong>}</p>
+        </div>
+        {isMain && role === 'admin' && <button type="button" className="inv-icon store-pin" aria-pressed={i.pinned} aria-label={i.pinned ? `เอา ${i.name} ออกจากของขายบ่อย` : `ปักหมุด ${i.name} เป็นของขายบ่อย`} disabled={pinOp.busy} onClick={() => togglePin(i)}>{i.pinned ? '★' : '☆'}</button>}
         <div className="store-add">
           <input aria-label={`จำนวน ${i.name}`} inputMode="decimal" value={qtyDraft[i.key] ?? '1'} onChange={e => setQtyDraft({...qtyDraft, [i.key]: e.target.value})}/>
           <button type="button" className="inv-primary" disabled={disabled || (isMain && !i.inStock)} onClick={() => add(i)}>เพิ่ม</button>
