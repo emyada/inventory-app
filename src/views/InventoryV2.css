@@ -457,3 +457,11 @@
 .inventory-v2 .store-item .store-add{flex:none;display:flex;gap:4px;align-items:center;}
 .inventory-v2 .store-item .store-add input{width:46px;min-height:34px;padding:4px;text-align:center;font-size:14px;}
 .inventory-v2 .store-item .store-add button{min-height:34px;padding:4px 12px;font-size:13px;}
+
+/* รายงานสิ้นเดือน: การ์ด "ผลิตทั้งหมด" กดได้ */
+.inventory-v2 button.mr-total { display: block; text-align: left; margin: 0; width: 100%; min-height: 0; padding: 14px 16px; border: 1.5px solid var(--inv-accent); background: var(--inv-accent); color: #fff; }
+.inventory-v2 button.mr-total[aria-pressed="true"] { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--inv-accent); }
+.mr-row-head { font-weight: 700; }
+.mr-row-sub { padding-left: 14px; color: var(--inv-muted); }
+.mr-group + .mr-group { margin-top: 6px; }
+.mr-row-total { border-top: 2px solid var(--inv-line); margin-top: 8px; }

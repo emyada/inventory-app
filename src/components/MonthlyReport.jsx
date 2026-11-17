@@ -12,6 +12,7 @@ function useLoad(load, deps) {
     e => setState({busy: false, error: e.message || 'โหลดไม่สำเร็จ', data: null}), deps);
   return state;
 }
+const ALL = '__all__';
 const fmt = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 2});
 
 function saveFile({filename, type, body}) {
@@ -45,7 +46,10 @@ export function MonthlyReport({api, revision}) {
   if (requests.error || report?.error) return <section className="mr"><h2>รายงานสิ้นเดือน</h2><p role="alert">{requests.error || report.error} กรุณาโหลดใหม่</p></section>;
 
   const shown = report.categories.filter(c => c.pairs > 0);
-  const active = shown.find(c => c.name === picked) || shown[0] || null;
+  const showAll = picked === ALL && shown.length > 0;
+  const active = showAll ? null : (shown.find(c => c.name === picked) || shown[0] || null);
+  const matTitle = showAll ? 'ทั้งหมด' : active?.name;
+  const matRows = showAll ? [...report.materialsAll].sort((a, b) => b.qty - a.qty || a.material.localeCompare(b.material)) : (active?.materials || []);
   const download = () => {
     setMessage('');
     try {
@@ -67,19 +71,26 @@ export function MonthlyReport({api, revision}) {
     <div className="mr-cols">
       <div className="mr-left">
         <div className="mr-cats">
-          <div className="mr-card mr-total"><small>ผลิตทั้งหมด</small><strong>{fmt(report.totalPairs)}</strong><em>คู่</em><p>ซ่อมและอื่นๆ แยก {report.repairCount} รายการ</p></div>
-          {shown.map(c => <button type="button" key={c.name} className="mr-card mr-cat" aria-pressed={active?.name === c.name} onClick={() => setPicked(c.name)}>
+          <button type="button" className="mr-card mr-total" aria-pressed={showAll} onClick={() => setPicked(ALL)}><small>ผลิตทั้งหมด</small><strong>{fmt(report.totalPairs)}</strong><em>คู่</em><p>ซ่อมและอื่นๆ แยก {report.repairCount} รายการ</p></button>
+          {shown.map(c => <button type="button" key={c.name} className="mr-card mr-cat" aria-pressed={!showAll && active?.name === c.name} onClick={() => setPicked(c.name)}>
             <small>{c.name}</small><strong>{fmt(c.pairs)}</strong><em>คู่</em><p>{c.models.length} รุ่น</p></button>)}
         </div>
         {!shown.length && <p className="inv-empty">เดือนนี้ยังไม่มีงานผลิต</p>}
+        {showAll && <div className="mr-card"><h3>ทั้งหมด — แยกตามหมวดและรุ่น</h3>
+          {shown.map(c => <div className="mr-group" key={c.name}>
+            <div className="mr-row mr-row-head"><span>{c.name}</span><span>{fmt(c.pairs)}</span></div>
+            {c.models.map(m => <div className="mr-row mr-row-sub" key={m.model}><span>{m.model}</span><span>{fmt(m.pairs)}</span></div>)}
+          </div>)}
+          <div className="mr-row mr-row-head mr-row-total"><span>รวม</span><span>{fmt(report.totalPairs)}</span></div></div>}
         {active && <div className="mr-card"><h3>{active.name} — แยกตามรุ่น</h3>
           {active.models.map(m => <div className="mr-row" key={m.model}><span>{m.model}</span><span>{fmt(m.pairs)}</span></div>)}</div>}
       </div>
       <div className="mr-right">
-        {active && <div className="mr-card"><h3>{active.name} — วัตถุดิบที่ใช้ตาม BOM</h3>
-          {active.materials.slice(0, 8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}
-          {active.materials.length > 8 && <details><summary>ดูทั้ง {active.materials.length} รายการ</summary>
-            {active.materials.slice(8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
+        {matTitle && <div className="mr-card"><h3>{matTitle} — วัตถุดิบที่ใช้ตาม BOM</h3>
+          {matRows.slice(0, 8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}
+          {matRows.length > 8 && <details><summary>ดูทั้ง {matRows.length} รายการ</summary>
+            {matRows.slice(8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
+          {showAll && report.repairCount > 0 && <p className="inv-muted">รวมวัตถุดิบของงานซ่อมและอื่นๆ ด้วย</p>}
         </div>}
         {(report.unfinished.length > 0 || report.waitingPick > 0) && <div className="mr-card mr-unfinished"><h3>ไม่เสร็จ / ยกไปเดือนหน้า</h3>
           {report.unfinished.map(j => <div className="mr-row" key={j.id}><span>{j.order} · {j.model}<small>{j.worker}{j.continued ? ` · ทำต่อแล้ว ${j.continued.date}` : ' · ยังไม่ได้ทำต่อ'}</small></span><span>1 คู่</span></div>)}
