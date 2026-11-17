@@ -401,3 +401,19 @@
 .pq-bulk-bar span{flex:1 1 auto}
 .pq-all{display:flex;gap:.4rem;align-items:center;margin:.4rem 0}
 .pq-select{margin-right:.35rem}
+
+/* admin icon buttons in the header (accounts, accept-new-requests) with drop-down panels */
+.inventory-v2 .inv-header{position:relative;}
+.inventory-v2 .inv-hdr-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;}
+.inventory-v2 .inv-hdr-dot{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;border:2px solid var(--inv-panel);background:#999;}
+.inventory-v2 .inv-hdr-dot.on{background:#1f9d57;}
+.inventory-v2 .inv-hdr-dot.off{background:#d33;}
+.inventory-v2 .inv-hdr-panel{position:absolute;z-index:40;top:100%;left:8px;right:8px;max-height:75dvh;overflow:auto;padding:14px;background:var(--inv-panel);border:1px solid var(--inv-line);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.18);text-align:left;}
+.inventory-v2 .inv-hdr-panel-sm{max-width:420px;left:auto;}
+.inventory-v2 .inv-hdr-panel h3{margin:0 0 6px;font-size:15px;}
+.inventory-v2 .inv-hdr-close{float:right;margin:0 0 6px 8px;}
+.inventory-v2 .inv-hdr-panel label{display:block;margin:6px 0;}
+.inventory-v2 .inv-hdr-panel input,.inventory-v2 .inv-hdr-panel select{width:100%;}
+.inventory-v2 .inv-hdr-panel fieldset{border:0;padding:0;margin:0;min-width:0;}
+.inventory-v2 .inv-header .inv-brand{min-width:0;flex:1 1 auto;}
+.inventory-v2 .inv-header .inv-brand h1{font-size:14px;line-height:1.25;}

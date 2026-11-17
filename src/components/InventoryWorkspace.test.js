@@ -102,7 +102,7 @@ test('offline component render: role navigation, report detail and modal contrac
   assert.ok(blockedPage.includes('<button disabled="">ยื่นคำขอเบิก</button>'));
   const {RequestPolicySwitch}=await server.ssrLoadModule('/src/components/InventoryRequestPolicy.jsx');
   const switchHtml=renderToStaticMarkup(React.createElement(RequestPolicySwitch,{policy:{employee_requests_enabled:false,revision:1},onChanged:()=>{}}));
-  assert.ok(switchHtml.includes('เปิดรับคำขอใหม่'));
+  assert.ok(switchHtml.includes('aria-label="รับคำขอใหม่จากพนักงาน"'));assert.ok(switchHtml.includes('inv-hdr-dot off'));
   assert.equal(network,0);
  }finally{await server.close();globalThis.fetch=originalFetch;}
 });
