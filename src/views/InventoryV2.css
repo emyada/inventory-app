@@ -386,8 +386,6 @@
 /* sell from main ("อื่นๆ"), pending tag, quick items */
 .store-sell-scroll{max-height:55vh;overflow-y:auto;overscroll-behavior:contain}
 .store-quick{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.4rem 0}
-.store-sticky-bar{position:sticky;bottom:0;padding:.6rem 0 calc(.6rem + env(safe-area-inset-bottom,0px));background:var(--surface,#fff);z-index:2}
-.store-sticky-bar button{width:100%}
 .store-pending-group{margin:1rem 0;padding:.6rem;border:1px solid #e0a800;border-radius:10px;background:rgba(224,168,0,.08)}
 .store-pending-banner{display:flex;gap:.6rem;align-items:center;justify-content:space-between;margin:.5rem 0;padding:.55rem .8rem;border-radius:10px;background:#fff4cc;color:#5c4500}
 .store-pending-banner.late{background:#fde2e2;color:#8a1c1c}
@@ -417,3 +415,29 @@
 .inventory-v2 .inv-hdr-panel fieldset{border:0;padding:0;margin:0;min-width:0;}
 .inventory-v2 .inv-header .inv-brand{min-width:0;flex:1 1 auto;}
 .inventory-v2 .inv-header .inv-brand h1{font-size:14px;line-height:1.25;}
+
+/* compact mobile header + single-row sub tabs + cart on top */
+@media(max-width:600px){
+ .inventory-v2 .inv-header{padding:5px 8px;gap:4px;}
+ .inventory-v2 .inv-header .inv-actions{gap:3px;}
+ .inventory-v2 .inv-header button{min-width:32px;min-height:32px;width:32px;height:32px;padding:0;border-radius:9px;}
+ .inventory-v2 .inv-header button svg{width:16px;height:16px;}
+ .inventory-v2 .inv-brand>div{min-width:0;}
+ .inventory-v2 .inv-brand h1{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+ .inventory-v2 .inv-brand p{font-size:10.5px;margin:1px 0 0;}
+ .inventory-v2 .inv-brand svg{width:18px;height:18px;flex:none;}
+ .inventory-v2 .inv-subnav{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:4px;padding-bottom:2px;scrollbar-width:none;}
+ .inventory-v2 .inv-subnav::-webkit-scrollbar{display:none;}
+ .inventory-v2 .inv-subnav button{flex:0 0 auto;min-height:32px;padding:4px 12px;font-size:13px;white-space:nowrap;overflow-wrap:normal;}
+}
+.inventory-v2 .store-sell-cart{order:-1;top:0;z-index:5;padding:8px 10px;margin:0;}
+.inventory-v2 .store-sell-cart h3{display:flex;align-items:center;gap:6px;margin:0 0 4px;font-size:14px;}
+.inventory-v2 .store-clear{margin-left:auto;min-height:28px;padding:2px 10px;font-size:12px;}
+.inventory-v2 .store-cart-empty,.inventory-v2 .store-tag-help{font-size:11.5px;margin:4px 0 0;}
+.inventory-v2 .store-cart-rows{max-height:24vh;overflow-y:auto;margin:0 0 6px;}
+.inventory-v2 .store-tag-row{display:flex;gap:6px;align-items:center;}
+.inventory-v2 .store-tag-row input{flex:1;min-width:0;font-size:15px;}
+.inventory-v2 .store-tag-row button{flex:none;white-space:nowrap;}
+.inventory-v2 .store-req{color:#c62828;}
+.inventory-v2 .store-sell-pick h2{font-size:15px;margin:0 0 4px;}
+@media(min-width:900px){.inventory-v2 .store-sell-cart{order:2;top:8px;}}
