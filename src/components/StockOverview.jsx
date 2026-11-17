@@ -2,7 +2,6 @@ import {useRefreshRead} from '../hooks/useRefreshRead.js';
 import React,{useState} from 'react';
 import {loadAllMovements,localDay} from '../lib/inventoryReports.js';
 import {receivingRows,receivingType} from '../lib/receivingHistory.js';
-import {CanonicalReports} from './CanonicalReports.jsx';
 export function StockOverview({api,role,revision}) {
  const [data,setData]=useState(null),[error,setError]=useState(null),[reload,setReload]=useState(0);
  const [history,setHistory]=useState(false),[search,setSearch]=useState(''),[type,setType]=useState('All'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[page,setPage]=useState(0);
@@ -16,7 +15,6 @@ export function StockOverview({api,role,revision}) {
  const change=setter=>e=>{setter(e.target.value);setPage(0);};
  return <section aria-label="Stock Overview">
   <h2>ภาพรวมคลัง</h2>
-  {!history&&<CanonicalReports api={api} role={role} revision={revision} compact/>}
   <div className="inv-toolbar"><h3>{history?'ประวัติรับเข้า':'รับเข้าล่าสุด 5 รายการ'}</h3><button onClick={()=>{setHistory(!history);setPage(0);}}>{history?'กลับภาพรวม':'ดูทั้งหมด — Receiving History'}</button></div>
   {history&&<div className="inv-filters"><label>ค้นหาประวัติ<input value={search} onChange={change(setSearch)} placeholder="วัตถุดิบ / อ้างอิง / ผู้บันทึกหรือ UUID"/></label><label>ประเภท<select aria-label="ประเภท" value={type} onChange={change(setType)}>{['All','Purchased','Returned to Stock'].map(t=><option key={t}>{t}</option>)}</select></label><label>จาก (Bangkok)<input type="date" value={from} onChange={change(setFrom)}/></label><label>ถึง (Bangkok)<input type="date" value={to} onChange={change(setTo)}/></label></div>}
   {failed?<p role="alert">โหลดประวัติไม่สำเร็จ <button onClick={()=>setReload(v=>v+1)}>ลองใหม่</button></p>:!ready?<p role="status">กำลังโหลดประวัติ…</p>:invalid?<p role="alert">{invalid}</p>:<>

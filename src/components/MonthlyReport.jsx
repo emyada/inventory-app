@@ -92,6 +92,12 @@ export function MonthlyReport({api, revision}) {
             {matRows.slice(8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
           {showAll && report.repairCount > 0 && <p className="inv-muted">รวมวัตถุดิบของงานซ่อมและอื่นๆ ด้วย</p>}
         </div>}
+        {report.repairs.length > 0 && <div className="mr-card"><h3>ซ่อมและอื่นๆ ({report.repairs.length} รายการ)</h3>
+          {report.repairs.slice(0, 8).map(r => <div className="mr-row" key={r.request_id}><span>{r.order || '-'} · {r.model || '-'}<small>{r.date} {r.time} · {r.worker}{r.reason ? ` · ${r.reason}` : ''}</small></span></div>)}
+          {report.repairs.length > 8 && <details><summary>ดูทั้ง {report.repairs.length} รายการ</summary>
+            {report.repairs.slice(8).map(r => <div className="mr-row" key={r.request_id}><span>{r.order || '-'} · {r.model || '-'}<small>{r.date} {r.time} · {r.worker}{r.reason ? ` · ${r.reason}` : ''}</small></span></div>)}</details>}
+          <p className="inv-muted">ไม่นับเป็นยอดผลิต · วัตถุดิบของงานซ่อมอยู่ในรวมวัตถุดิบ (กดการ์ด "ผลิตทั้งหมด")</p>
+        </div>}
         {(report.unfinished.length > 0 || report.waitingPick > 0) && <div className="mr-card mr-unfinished"><h3>ไม่เสร็จ / ยกไปเดือนหน้า</h3>
           {report.unfinished.map(j => <div className="mr-row" key={j.id}><span>{j.order} · {j.model}<small>{j.worker}{j.continued ? ` · ทำต่อแล้ว ${j.continued.date}` : ' · ยังไม่ได้ทำต่อ'}</small></span><span>1 คู่</span></div>)}
           {report.unfinishedLoss.length > 0 && <details><summary>สูญเสียจากงานไม่เสร็จ ({report.unfinishedLoss.length} รายการ)</summary>
