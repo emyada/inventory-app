@@ -12,7 +12,9 @@ test('preview label is explicit without relabeling local or enabling writes',()=
 test('scrollable notices and controls stay before the persistent navigation',()=>{
  const source=readFileSync('src/views/InventoryV2.jsx','utf8');
  const content=source.indexOf('<div className="inv-content">'),nav=source.indexOf('<nav className="inv-bottom"');
- for(const marker of ['<ManagedAccounts','<RequestPolicySwitch','{setupError&&','<InventoryRecoveryPanel']){
+ const header=source.indexOf('<header className="inv-header">');
+ for(const marker of ['<ManagedAccounts','<RequestPolicySwitch']){assert.ok(source.indexOf(marker)>header);assert.ok(source.indexOf(marker)<content);}
+ for(const marker of ['{setupError&&','<InventoryRecoveryPanel']){
   assert.ok(source.indexOf(marker)>content);assert.ok(source.indexOf(marker)<nav);
  }
  assert.match(source,/aria-label="เมนูหลัก"/);
