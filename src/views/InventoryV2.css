@@ -465,3 +465,14 @@
 .mr-row-sub { padding-left: 14px; color: var(--inv-muted); }
 .mr-group + .mr-group { margin-top: 6px; }
 .mr-row-total { border-top: 2px solid var(--inv-line); margin-top: 8px; }
+
+/* คำขอของฉัน (พนักงาน): แถวเดียวต่อคำขอ แตะเพื่อดูรายละเอียด */
+.inv-card.req-row { padding: 0; }
+.req-row > details > summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; min-height: 44px; }
+.req-row > details > summary::-webkit-details-marker { display: none; }
+.req-row > details > summary strong { font-size: 15px; flex: none; }
+.req-row .req-model { flex: 1; min-width: 0; color: var(--inv-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.req-row .inv-status { flex: none; font-size: 12px; padding: 3px 8px; }
+.req-row > details[open] > summary { border-bottom: 1px solid var(--inv-line); }
+.req-row > details > :not(summary) { margin-left: 12px; margin-right: 12px; }
+.req-row > details > :last-child { margin-bottom: 12px; }
