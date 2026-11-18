@@ -64,6 +64,8 @@ export function storeError(error) {
   if (message === 'DUPLICATE_SALE_TAG') return 'แท็กนี้ถูกใช้ไปแล้ว';
   if (message === 'SALE_TAG_REQUIRED') return `ต้องกรอกรหัสแท็กการขาย (อย่างน้อย ${SALE_TAG_MIN} ตัวอักษร)`;
   if (/^MAIN_STOCK_SHORT/.test(message)) return `ของในคลังหลักไม่พอ: ${message.replace(/^MAIN_STOCK_SHORT:\s*/, '')} (ยังไม่ตัดอะไรเลย)`;
+  if (message === 'FEEDBACK_MESSAGE_REQUIRED') return 'พิมพ์ข้อความอย่างน้อย 3 ตัวอักษร';
+  if (message === 'FEEDBACK_TOO_MANY') return 'ส่งบ่อยเกินไป รออีกสักครู่แล้วลองใหม่';
   if (message === 'SALE_REASON_REQUIRED') return 'ต้องใส่เหตุผลการขายอื่นๆ ก่อนบันทึก';
   if (message === 'SALE_TAG_ALREADY_SET') return 'ใบนี้มีแท็กแล้ว';
   if (/Finite positive quantity/i.test(message)) return 'จุดเตือนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';

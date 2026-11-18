@@ -1,5 +1,6 @@
 import {MobileRefresh,RefreshButton} from '../components/MobileRefresh.jsx';
 import { ManagedAccounts } from '../components/ManagedAccounts.jsx';
+import {FeedbackButton} from '../components/Feedback.jsx';
 import './InventoryV2.css';
 import {useRequestPolicy,RequestPolicySwitch} from '../components/InventoryRequestPolicy.jsx';
 import {employeeMayCreate} from '../lib/inventoryRequestPolicy.js';
@@ -39,7 +40,7 @@ export default function InventoryV2({role,profile,signOut,api:injectedApi}) {
   const close=()=>{setTask(null);setRecoveryBlocked(Boolean(recovery));};
   const actionBusy=!mutationsEnabled||Boolean(task)||recoveryBlocked;
   return <MobileRefresh blocked={Boolean(task)||setupBusy} onRefresh={async()=>{try{setSetup(await opening.status());setSetupError('');}catch(e){setSetup(null);setSetupError('ไม่สามารถตรวจสถานะคลังได้ ปิดการทำรายการไว้ก่อน');throw e;}}}><main className="inventory-v2"><div className="inv-shell">
-    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p title={profile?.full_name}><span className="inv-user-name">{profile?.username || profile?.full_name} · </span>{role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':role==='store'?'พนักงานหน้าร้าน':'พนักงาน'}</p></div></div><div className="inv-actions">{role==='admin' && profile.enabled===true && inventoryEnvironment.mutationsEnabled && <ManagedAccounts/>}{role==='admin'&&<RequestPolicySwitch policy={requestPolicy} disabled={!mutationsEnabled||Boolean(task)||recoveryBlocked} onChanged={refresh}/>}<RefreshButton disabled={Boolean(task)||setupBusy}><RefreshCw size={18}/></RefreshButton><button aria-label="ออกจากระบบ" disabled={Boolean(task)||setupBusy} onClick={signOut}><LogOut size={18}/></button></div></header>
+    <header className="inv-header"><div className="inv-brand"><Package size={22}/><div><h1>คลังสินค้า — IEM Workshop</h1><p title={profile?.full_name}><span className="inv-user-name">{profile?.username || profile?.full_name} · </span>{role==='admin'?'หัวหน้าฝ่ายผลิต':role==='purchasing'?'จัดซื้อ':role==='store'?'พนักงานหน้าร้าน':'พนักงาน'}</p></div></div><div className="inv-actions">{role==='admin' && profile.enabled===true && inventoryEnvironment.mutationsEnabled && <ManagedAccounts/>}{role==='admin'&&<RequestPolicySwitch policy={requestPolicy} disabled={!mutationsEnabled||Boolean(task)||recoveryBlocked} onChanged={refresh}/>}{mutationsEnabled&&<FeedbackButton api={api} role={role} page={tab} revision={revision} disabled={Boolean(task)||setupBusy}/>}<RefreshButton disabled={Boolean(task)||setupBusy}><RefreshCw size={18}/></RefreshButton><button aria-label="ออกจากระบบ" disabled={Boolean(task)||setupBusy} onClick={signOut}><LogOut size={18}/></button></div></header>
     <InventoryModeBanner policy={inventoryEnvironment}/>
     <div className="inv-content">
     {role==='staff'&&createBlocked&&<aside className="inv-environment">{requestPolicy?'ปิดรับคำขอใหม่ชั่วคราว — รายการเดิมยังดำเนินการได้':'กำลังตรวจสอบสิทธิ์สร้างคำขอใหม่'}</aside>}

@@ -2,8 +2,14 @@
 // Arbitrary thrown errors, lookup errors and HTTP status alone do not.
 const databaseFailures = new WeakSet();
 const sqlstate = /^(?:(?:[0-9]{2}|P0|F0|HV|XX)[0-9A-Z]{3}|PGRST[0-3][0-9]{2})$/;
+// A signed-out / expired session is the one failure staff can fix themselves: tell them in Thai.
+export function friendlyAuthMessage(responseError) {
+  const text = String(responseError?.message || '');
+  if (responseError?.code === 'PGRST301' || /jwt expired|authentication required/i.test(text)) return 'เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่';
+  return null;
+}
 export function rpcResponseError(responseError, {mutation = false} = {}) {
-  const error = new Error(responseError?.message || 'Inventory RPC failed');
+  const error = new Error(friendlyAuthMessage(responseError) || responseError?.message || 'Inventory RPC failed');
   error.code=responseError?.code;error.details=responseError?.details;error.hint=responseError?.hint;
   const structured = responseError && typeof responseError === 'object'
     && typeof responseError.message === 'string' && responseError.message.trim()
