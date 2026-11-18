@@ -15,3 +15,16 @@ test('multi-model draft renders distinct required fields and review acknowledgme
  assert.ok(!html.includes('type="number"'));
  } finally {await server.close();}
 });
+
+test('single-model draft: model fixed, no model select, rows differ by order only',async()=>{
+ const server=await createServer({configFile:false,envDir:false,ssr:{external:['react','react-dom']},server:{middlewareMode:true,hmr:false,watch:null}});
+ try {
+ const {MultiOrderDraft}=await server.ssrLoadModule('/src/components/MultiOrderDraft.jsx');
+ const model={id:'a',name:'MRA-Driver',category:'CIEM'};
+ const html=renderToStaticMarkup(React.createElement(MultiOrderDraft,{rows:[{model_id:'a',order_ref:'001'},{model_id:'a',order_ref:'002'}],models:[model,{id:'b',name:'Other',category:'Tactical'}],model,reviewed:false,onChange(){},onReviewedChange(){}}));
+ assert.equal((html.match(/<select/g)||[]).length,0);
+ assert.ok(html.includes('MRA-Driver'));
+ assert.ok(!html.includes('Other'));
+ assert.ok(html.includes('001')&&html.includes('002'));
+ } finally {await server.close();}
+});

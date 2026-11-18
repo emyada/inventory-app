@@ -66,6 +66,7 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [tag, setTag] = useState('');
+  const [reason, setReason] = useState('');
   const [qtyDraft, setQtyDraft] = useState({});
   const [message, setMessage] = useState('');
   const [duplicate, setDuplicate] = useState(null);
@@ -92,16 +93,20 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
     op.run(() => {
       const clean = isMain ? optionalSaleTag(tag) : validateSaleTag(tag);
       if (!cart.length) throw new Error('เลือกสินค้าอย่างน้อย 1 รายการ');
-      return api.store_create_sale({...(clean ? {tag: clean} : {}), lines: cartLines(cart)});
+      if (isMain && !reason.trim()) throw new Error('ต้องใส่เหตุผลการขายอื่นๆ ก่อนบันทึก');
+      return api.store_create_sale({...(clean ? {tag: clean} : {}), lines: cartLines(cart), ...(isMain ? {reason: reason.trim()} : {})});
     });
   }
   function addToExisting() {
     op.reset();
-    op.run(() => api.store_add_sale_lines({sale_id: duplicate.sale_id, lines: cartLines(cart)}, {intentKey: `add:${duplicate.sale_id}`}));
+    op.run(() => {
+      if (isMain && !reason.trim()) throw new Error('ต้องใส่เหตุผลการขายอื่นๆ ก่อนบันทึก');
+      return api.store_add_sale_lines({sale_id: duplicate.sale_id, lines: cartLines(cart), ...(isMain ? {reason: reason.trim()} : {})}, {intentKey: `add:${duplicate.sale_id}`});
+    });
   }
   const done = useCallback(result => {
     setMessage(result?.tag ? `บันทึกการขาย ${result.tag} แล้ว` : 'บันทึกแล้ว — ตัดสต็อกแล้ว รอกรอกแท็กทีหลัง (ดูที่ รายการขาย)');
-    setCart([]); setTag(''); setDuplicate(null); op.reset(); onChanged();
+    setCart([]); setTag(''); setReason(''); setDuplicate(null); op.reset(); onChanged();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset is stable
   }, [onChanged]);
   const failed = useCallback(error => {
@@ -120,9 +125,10 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
         <span>{r.name}<small>{r.kind === 'model' ? 'ชุด' : r.unit}</small></span><strong>×{fmtQty(r.qty)}</strong>
         <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
       </li>)}</ul>
+      {isMain && <label className="store-reason">เหตุผลที่ขายอื่นๆ (จำเป็น)<input aria-label="เหตุผลการขายอื่นๆ" required value={reason} maxLength={200} onChange={e => setReason(e.target.value)} placeholder="เช่น ลูกค้าขอซื้อเพิ่ม / ของเสียเปลี่ยนให้"/></label>}
       <div className="store-tag-row">
         <input aria-label="รหัสแท็กการขาย" required={!isMain} value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย (เลข Shipnity) *'} aria-describedby="tag-help" autoComplete="off"/>
-        <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim())}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
+        <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim()) || (isMain && !reason.trim())}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
       </div>
       <p id="tag-help" className="inv-muted store-tag-help">{isMain ? 'เว้นว่าง = ตัดคลังหลักทันที แล้วไปกรอกแท็กทีหลังที่ “รายการขาย”' : <><b className="store-req">ต้องใส่แท็ก</b> · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</>}</p>
       {duplicate && <div role="alert" className="store-duplicate">
@@ -367,10 +373,10 @@ function SaleCard({api, s, role, userId, actionBusy, cancelling, setCancelling, 
       <span className={`inv-status ${s.status === 'cancelled' ? 'cancelled' : s.pending ? 'pending' : 'completed'}`}>{storeSaleStatusLabel(s.status, s.pending)}</span></div>
     <p className="inv-muted">{s.created_at_label} · {s.seller_name || '—'} · <span className="store-source">{saleSource(s)}</span>
       {late >= PENDING_TAG_WARN_DAYS && <> · <b className="store-late">ค้างแท็ก {late} วัน</b></>}</p>
-    <ul className="store-lines">{s.lines.map((l, i) => <li key={i}>{l.name} <strong>×{fmtQty(l.qty)}</strong> <span className="inv-muted">{l.item_kind === 'model' ? 'ชุด' : l.unit}{l.source === 'main' ? ' · คลังหลัก' : ''}</span></li>)}</ul>
+    <ul className="store-lines">{s.lines.map((l, i) => <li key={i}>{l.name} <strong>×{fmtQty(l.qty)}</strong> <span className="inv-muted">{l.item_kind === 'model' ? 'ชุด' : l.unit}{l.source === 'main' ? ' · คลังหลัก' : ''}</span>{l.reason && <small className="inv-muted"> · เหตุผล: {l.reason}</small>}</li>)}</ul>
     {s.status === 'cancelled' && <p className="inv-muted">ยกเลิก: {s.cancel_reason}</p>}
     {s.pending && (role === 'admin' || s.seller_id === userId) && <SetTagForm api={api} sale={s} onDone={onChanged}/>}
-    {s.status === 'active' && (role === 'admin' || s.seller_id === userId) && (cancelling === s.sale_id
+    {s.status === 'active' && role === 'admin' && (cancelling === s.sale_id
       ? <CancelSale api={api} sale={s} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); onChanged(); }}/>
       : <button type="button" disabled={actionBusy} onClick={() => setCancelling(s.sale_id)}>ยกเลิกการขายนี้</button>)}
   </article>;
