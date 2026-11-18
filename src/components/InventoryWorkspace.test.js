@@ -23,7 +23,7 @@ test('offline component render: role navigation, report detail and modal contrac
   const {InventoryCategoryCards}=await server.ssrLoadModule('/src/components/InventoryCategoryCards.jsx');
   const reportSource=readFileSync(new URL('./InventoryReports.jsx',import.meta.url),'utf8');
   assert.match(reportSource,/tab==='dashboard'&&<InventoryCategoryCards/);
-  assert.match(reportSource,/<CanonicalReports api=\{api\}/);
+  assert.doesNotMatch(reportSource,/CanonicalReports/);
   const emptyReport={requests:[],movements:[],balances:[],categoryUsage:[]};
   for(const role of ['admin','purchasing']) {
    const cards=renderToStaticMarkup(React.createElement(InventoryCategoryCards,{data:emptyReport,role,from:'2026-10-01',to:'2026-10-31',Table:ReportTable}));

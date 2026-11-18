@@ -87,3 +87,11 @@ for(const response of [{data:null,error:null},{status:500,data:undefined},{}]){
 function createInventoryApi(client,options={}) {return apiFactory(client,{mutationsEnabled:true,...options});}
 
 function createRecoveryInventory(client,options={}) {return recoveryFactory(client,{mutationsEnabled:true,...options});}
+
+import {friendlyAuthMessage as _friendly, rpcResponseError as _rpcErr} from './inventoryFailure.js';
+test('expired or missing session shows a Thai instruction, other errors keep their message',()=>{
+ assert.match(_rpcErr({message:'Authentication required',code:'P0001'},{mutation:true}).message,/เซสชันหมดอายุ/);
+ assert.match(_rpcErr({message:'JWT expired',code:'PGRST301'}).message,/เซสชันหมดอายุ/);
+ assert.equal(_rpcErr({message:'Permission denied',code:'P0001'},{mutation:true}).message,'Permission denied');
+ assert.equal(_friendly({message:'x'}),null);
+});

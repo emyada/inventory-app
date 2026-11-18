@@ -20,9 +20,9 @@ test('matching expected ref: boot and all 19 approved inventory read RPCs work w
  const {policy,api,calls}=configured();let rendered=false;
  assert.equal(policy.error,null);assert.equal(policy.mutationsEnabled,false);
  await bootstrapInventory(policy,{load:async()=>({ok:true}),render:v=>rendered=v.ok,blocked:()=>assert.fail('blocked')});
- assert.equal(rendered,true);assert.deepEqual(Object.keys(readParameters).sort(),['get_operation_result','list_finished_stock','finished_balance_report','list_materials','list_my_requests','list_pick_queue','balance_report','list_movements','purchase_category_usage_report','request_policy','bom_history','request_reference_settings','reference_history','store_list_stock','store_list_main_items','store_list_sales','store_report','store_list_transfers','combined_balance'].sort());
+ assert.equal(rendered,true);assert.deepEqual(Object.keys(readParameters).sort(),['get_operation_result','list_finished_stock','finished_balance_report','list_materials','list_my_requests','list_pick_queue','balance_report','list_movements','purchase_category_usage_report','request_policy','bom_history','request_reference_settings','reference_history','store_list_stock','store_list_main_items','store_list_sales','store_report','store_list_transfers','list_feedback','combined_balance'].sort());
  for(const name of Object.keys(readParameters))await api[name](name==='get_operation_result'?{operation_id:U}:{});
- assert.equal(calls.length,19);
+ assert.equal(calls.length,20);
  assert.deepEqual(calls.map(c=>c.name).sort(),Object.keys(readParameters).map(name=>'inventory_'+name).sort());
  const before=calls.length;
  await api.bom_history({model_id:U});await api.reference_history({reference:'0001',category:'CIEM'});

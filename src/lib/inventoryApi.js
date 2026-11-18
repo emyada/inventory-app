@@ -24,6 +24,8 @@ export const mutationParameters = Object.freeze({
   set_model_active: 'model_id is_active reason',
   store_transfer: 'lines note',
   store_return: 'lines note',
+  submit_feedback: 'message category page context',
+  resolve_feedback: 'feedback_id done',
   store_set_min: 'item_kind item_id min_qty',
   store_create_sale: 'tag lines reason',
   store_add_sale_lines: 'sale_id lines reason',
@@ -51,6 +53,7 @@ export const readParameters = Object.freeze({
   store_list_sales: 'date_from date_to timezone limit',
   store_report: 'date_from date_to timezone',
   store_list_transfers: 'date_from date_to timezone limit',
+  list_feedback: 'status limit',
   combined_balance: '',
 });
 function parameters(allowed, input) {

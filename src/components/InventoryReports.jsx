@@ -5,7 +5,6 @@ import {loadReportData, localDay, modelSummary, allocationRows, sumAmounts, nega
 import {reportProjection,REPAIR_CATEGORY,categoryOverview} from '../lib/inventoryReportFilters.js';
 import {PRODUCT_CATEGORIES} from '../lib/inventoryReports.js';
 import {downloadCSV} from '../utils/csv.js';
-import {CanonicalReports} from './CanonicalReports.jsx';
 import {InventorySimulation} from './InventorySimulation.jsx';
 import {InventoryCategoryCards} from './InventoryCategoryCards.jsx';
 const requestColumns=[['order_ref','ออเดอร์ / อ้างอิง'],['model_name','รุ่น ณ วันที่ขอ'],['category','หมวด'],['created_at','เวลาสร้าง'],['status_label','สถานะปัจจุบัน'],['requester','ผู้ขอ'],['cancelled_at','เวลายกเลิก'],['model_id','รหัสรุ่น'],['request_id','รหัสคำขอ']];
@@ -20,8 +19,7 @@ export function ReportTable({rows,columns}) {
     {last>0&&<div className="inv-toolbar"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>หน้า {current+1}/{last+1} · {rows.length} รายการ</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}</>;
 }
 export function InventoryReports({api,role,revision}) {
-  const [mode,setMode]=useState('legacy');
-  return <>{role==='admin'&&<nav className="inv-subnav" aria-label="ชุดรายงาน"><button aria-pressed={mode==='legacy'} onClick={()=>setMode('legacy')}>รายงานเดิม</button><button aria-pressed={mode==='canonical'} onClick={()=>setMode('canonical')}>รายงานการเบิกจริง</button></nav>}{mode==='canonical'&&role==='admin'?<CanonicalReports api={api} role={role} revision={revision}/>:<LegacyInventoryReports api={api} role={role} revision={revision}/>}</>;
+  return <LegacyInventoryReports api={api} role={role} revision={revision}/>;
 }
 function LegacyInventoryReports({api,role,revision}) {
   const today=localDay(new Date());const [from,setFrom]=useState(today.slice(0,8)+'01');const [to,setTo]=useState(today);
@@ -60,7 +58,7 @@ function LegacyInventoryReports({api,role,revision}) {
         <ReportTable rows={categories} columns={[['category','หมวด'],['requests','คำขอในช่วงวัน'],['completed','เบิกครบ'],['partially_picked','เบิกบางส่วน'],['pending','รอหยิบ'],['cancelled','ยกเลิก'],['production_not_completed','ผลิตไม่สำเร็จ'],['legacy_completed_shipped','Legacy completed/shipped']]}/>
         {exportButton('categories',categories,[['category','หมวด'],['requests','คำขอในช่วงวัน'],['completed','เบิกครบ'],['partially_picked','เบิกบางส่วน'],['pending','รอหยิบ'],['cancelled','ยกเลิก'],['production_not_completed','ผลิตไม่สำเร็จ'],['legacy_completed_shipped','Legacy completed/shipped']], 'ส่งออกจำนวนตามหมวด')}
         <details><summary>จำนวนคำขอตามรุ่น</summary><p className="inv-muted">ตามวันสร้างคำขอ</p><ReportTable rows={summary} columns={[["legacy_completed_shipped","Completed/shipped (legacy)"],["model_name","รุ่น"],["category","หมวด"],["requests","คำขอ"],["completed","เบิกครบ"],["pending","รอหยิบ"],["partially_picked","บางส่วน"],["cancelled","ยกเลิก"],["production_not_completed","ผลิตไม่สำเร็จ"]]}/>
-        {exportButton('models',summary,[['legacy_completed_shipped','Completed/shipped (legacy)'],['model_id','รหัสรุ่น'],['model_name','ชื่อรุ่นย้อนหลัง'],['category','หมวด'],['requests','คำขอ'],['completed','เบิกครบ'],['cancelled','ยกเลิก'],['production_not_completed','ผลิตไม่สำเร็จ']], 'ส่งออกสรุปรุ่น')}</details></>}
+        {exportButton('models',summary,[['legacy_completed_shipped','ข้อมูลเก่า: ส่งแล้ว'],['model_id','รหัสรุ่น'],['model_name','ชื่อรุ่นย้อนหลัง'],['category','หมวด'],['requests','คำขอ'],['completed','เบิกครบ'],['cancelled','ยกเลิก'],['production_not_completed','ผลิตไม่สำเร็จ']], 'ส่งออกสรุปรุ่น')}</details></>}
         <h3>การใช้วัตถุดิบจริงในงวด</h3><ReportTable rows={balances} columns={balanceColumns.filter(([key])=>['name','unit','issue','returned','net_usage','closing'].includes(key))}/><button onClick={()=>setTab('stock')}>ดูยอดและรายละเอียดทั้งหมด</button></>}
       {tab==='requests'&&role==='admin'&&<><p>หนึ่งแถวต่อคำขอ ไม่แปลงคู่/ข้าง และไม่ใช้ BOM ปัจจุบันคำนวณย้อนหลัง</p>{exportButton('requests',rows,requestColumns,'ส่งออกคำขอทั้งหมดในตัวกรอง')}{exportButton('requirements',requirements,[...requestColumns,['line_id','รหัสบรรทัด'],['material_id','รหัสวัตถุดิบ'],['material_name','วัตถุดิบ'],['unit','หน่วย'],['required_qty','ความต้องการตาม snapshot']], 'ส่งออกความต้องการวัตถุดิบ')}
         <ReportTable rows={rows} columns={requestColumns.filter(([key])=>!['request_id','model_id'].includes(key))}/>
