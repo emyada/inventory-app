@@ -30,6 +30,7 @@ export function createSleepplugBatch(api,text,context) {
 }
 export function createMultiOrderBatch(api,entries,context) {
  if(!['staff','admin'].includes(context.role)||!Array.isArray(entries)||!entries.length)throw new Error('กรุณาระบุรายการออเดอร์');
+ if(context.singleModel&&new Set(entries.map(e=>e.model_id)).size>1)throw new Error('หลายออเดอร์ต้องเป็นรุ่นเดียวกันเท่านั้น');
  const seen=new Set();
  const orders=entries.map(entry=>{
   const model=context.models?.find(m=>m.id===entry.model_id&&m.is_active!==false);

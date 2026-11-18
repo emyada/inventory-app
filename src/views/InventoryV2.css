@@ -510,3 +510,5 @@
 .store-sold-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
 .store-sold-chip{display:flex;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:8px;background:#F1EEE6;font-size:13px}
 .store-sold-chip span{min-width:0;overflow-wrap:anywhere}
+.store-reason{display:grid;gap:4px;font-size:13px;margin:8px 0}
+.store-reason input{width:100%}

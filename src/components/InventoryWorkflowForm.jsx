@@ -53,7 +53,7 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
 
       if(task.kind==='create'&&multiMode&&!repair){
        if(!multiReviewed)throw new Error('กรุณาตรวจทุกรายการก่อนส่ง');
-       const run=createMultiOrderBatch(api,multiRows,{role,userId,models});
+       const run=createMultiOrderBatch(api,multiRows.map(r=>({...r,model_id:modelId})),{role,userId,models,singleModel:true});
        operationRef.current=run;setBatch(run);setError(null);setSending(true);
        run.execute().then(result=>{setDone(result.status==='succeeded');onSuccess();}).finally(()=>setSending(false));return;
       }
@@ -74,8 +74,8 @@ function LegacyWorkflowForm({task,api,role,userId,profile,onClose,onSuccess,crea
     <p className="inv-muted">ผู้รับผิดชอบ: {profile?.full_name||'บัญชีที่เข้าสู่ระบบ'}</p>
     {(catalogLoading||previewLoading)&&<p role="status">กำลังโหลดข้อมูล…</p>}{catalogError&&<p role="alert">{catalogError} กรุณาปิดแล้วเปิดใหม่</p>}
     <form onSubmit={submit}><fieldset disabled={locked}>
-      {task.kind==='create'&&!repair&&<button type="button" aria-pressed={multiMode} onClick={()=>{setMultiMode(v=>!v);setMultiReviewed(false);}}>หลายออเดอร์ / หลายรุ่น</button>}
-      {task.kind==='create'&&multiMode&&!repair&&<MultiOrderDraft rows={multiRows} onChange={setMultiRows} models={models} reviewed={multiReviewed} onReviewedChange={setMultiReviewed}/>}
+      {task.kind==='create'&&!repair&&modelId&&<button type="button" aria-pressed={multiMode} onClick={()=>{setMultiMode(v=>!v);setMultiReviewed(false);}}>หลายออเดอร์ (รุ่นนี้)</button>}
+      {task.kind==='create'&&multiMode&&!repair&&<MultiOrderDraft rows={multiRows} onChange={setMultiRows} models={models} model={models.find(m=>m.id===modelId)} reviewed={multiReviewed} onReviewedChange={setMultiReviewed}/>}
       {task.kind==='create'&&(!multiMode||repair)&&<>{repair&&<p>ซ่อมและอื่นๆ</p>}
         {!repair&&models.find(m=>m.id===modelId)?.category==='Sleepplug'&&<button type="button" aria-pressed={batchMode} onClick={()=>setBatchMode(v=>!v)}>เพิ่มหลายออเดอร์พร้อมกัน</button>}
         {batchMode&&!repair&&models.find(m=>m.id===modelId)?.category==='Sleepplug'?<OrderChips values={batchRefs} onChange={setBatchRefs} draft={batchDraft} onDraftChange={setBatchDraft} reviewed={batchReviewed} onReviewedChange={setBatchReviewed}/>:

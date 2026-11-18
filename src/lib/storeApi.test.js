@@ -43,7 +43,7 @@ test('store role only sees the store tab; admin gets the store tab; purchasing h
   assert.ok(!workspaceTabs('staff').includes('store'));
 });
 test('store RPC contracts', () => {
-  assert.equal(mutationParameters.store_create_sale, 'tag lines');
+  assert.equal(mutationParameters.store_create_sale, 'tag lines reason');
   assert.equal(mutationParameters.store_transfer, 'lines note');
   assert.ok('store_list_stock' in readParameters && 'combined_balance' in readParameters);
 });
@@ -71,4 +71,8 @@ test('parseMinQty: blank clears, number ok, junk rejected', () => {
 test('soldBoard = sold − cancelled (>0) plus main-stock sales, biggest first', () => {
   const out = soldBoard([{item_kind: 'model', item_id: 'm1', name: 'A', sold: 5, sale_cancelled: 2}, {item_kind: 'model', item_id: 'm2', name: 'B', sold: 1, sale_cancelled: 1}], [{material_id: 'x', name: 'X', unit: 'ชิ้น', qty: 7}]);
   assert.deepEqual(out.map(r => [r.name, r.qty]), [['X', 7], ['A', 3]]);
+});
+
+test('storeError maps SALE_REASON_REQUIRED to Thai', () => {
+  assert.match(storeError(new Error('SALE_REASON_REQUIRED')), /เหตุผล/);
 });

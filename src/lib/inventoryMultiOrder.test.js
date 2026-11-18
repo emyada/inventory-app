@@ -42,3 +42,9 @@ test('shared picking material keeps two request identities and exact allocations
  assert.deepEqual(calls.map(c=>c.args.p_operation_id),['op-1','op-2']);
  assert.ok(calls.every(c=>c.name==='inventory_create_request'));
  });
+
+test('singleModel option rejects entries that mix models',()=>{
+ const models=[{id:'m1',name:'A',category:'CIEM',is_active:true},{id:'m2',name:'B',category:'Tactical',is_active:true}];
+ assert.throws(()=>createMultiOrderBatch({},[{model_id:'m1',order_ref:'1'},{model_id:'m2',order_ref:'2'}],{role:'staff',models,singleModel:true}),/รุ่นเดียวกัน/);
+ assert.doesNotThrow(()=>createMultiOrderBatch({},[{model_id:'m1',order_ref:'1'},{model_id:'m1',order_ref:'2'}],{role:'staff',models,singleModel:true}));
+});
