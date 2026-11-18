@@ -110,3 +110,11 @@ test('accepted V21 receipt survives normal history and Sheets CSV projection wit
  const csv=reportCSV(rows,[['reference','RCV'],['supplier_source','Source'],['document_type','Document'],['note','Note'],['delta','Quantity']],{timezone:'Asia/Bangkok'});
  assert.ok(csv.includes('RCV-20261003-001'));assert.ok(csv.includes('TEST-ONLY Receiving V2.1 Final UAT'));assert.ok(csv.includes('"0.25"'));
 });
+
+test('store movements (transfer/sale/returns) are reported, not rejected, and reconcile with the balance report',()=>{
+ const a=materialActivity([movement('p','purchase','10',false),movement('t','store_transfer','-4',false),movement('b','store_return','1',false),movement('s','store_sale','-2',false),movement('x','store_sale_return','2',false)],from,to)[0];
+ assert.deepEqual([a.store_transfer,a.store_return,a.store_sale,a.store_sale_return],['4','1','2','2']);
+ const b={id:'mat',name:'Liquid',coverage:'complete',opening:0,closing:'7',...a};
+ assert.deepEqual(balanceMismatches([b],[a]),[]);
+ assert.ok(balanceMismatches([{...b,closing:'10'}],[a]).includes('Liquid: closing'));
+});

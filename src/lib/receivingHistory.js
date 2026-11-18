@@ -11,3 +11,9 @@ export function receivingRows(rows,{search='',type='All',from='',to=''}={}) {
    [r.material_name,r.reference,r.actor_name,r.actor_id,r.receipt_document?.invoice_number,r.receipt_document?.po_number].some(v=>String(v??'').toLocaleLowerCase().includes(term));
  }).sort((a,b)=>Date.parse(b.occurred_at)-Date.parse(a.occurred_at)||b.sequence_no-a.sequence_no);
 }
+
+// Overview grouping: one collapsible group per receiving type, newest first (rows are already sorted).
+export const receivingGroupOrder=Object.freeze(['Purchased','Returned to Stock','Returned from Store','Counted Up']);
+export function receivingGroups(rows,perGroup=5){
+ return receivingGroupOrder.map(type=>{const all=rows.filter(r=>receivingType(r)===type);return {type,label:receivingLabels[type],count:all.length,latest:all[0]||null,rows:all.slice(0,perGroup)};});
+}

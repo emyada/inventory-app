@@ -1,7 +1,7 @@
 // Read-only report projections. Requirements never stand in for stock movements.
 export const PRODUCT_CATEGORIES = ['CIEM', 'Tactical', 'Lifestyle', 'Sleepplug', 'Universal'];
 export const WORKFLOW_LABELS = {legacy_completed_shipped:'Completed/shipped (legacy attestation)',pending:'รอหยิบ', partially_picked:'หยิบบางส่วน', completed:'เบิกครบแล้ว', cancelled:'ยกเลิกแล้ว', production_not_completed:'ผลิตไม่สำเร็จ / คืนแล้ว'};
-export const MOVEMENT_LABELS = {opening_balance:'ยอดตั้งต้นเพิ่มเติม',purchase:'รับเข้า',production_issue:'เบิกออก',cancellation_return:'คืนจากการยกเลิก',stocktake_adjustment_in:'ปรับเพิ่มจากการนับ',stocktake_adjustment_out:'ปรับลดจากการนับ',store_return:'คืนจากหน้าร้าน'};
+export const MOVEMENT_LABELS = {opening_balance:'ยอดตั้งต้นเพิ่มเติม',purchase:'รับเข้า',production_issue:'เบิกออก',cancellation_return:'คืนจากการยกเลิก',stocktake_adjustment_in:'ปรับเพิ่มจากการนับ',stocktake_adjustment_out:'ปรับลดจากการนับ',store_return:'คืนจากหน้าร้าน',store_transfer:'โอนไปหน้าร้าน',store_sale:'ขายหน้าร้าน (อื่นๆ)',store_sale_return:'คืนจากการยกเลิกขายหน้าร้าน'};
 export const workspaceTabs = role => role==='admin' ? ['floor','requests','materials','store','report'] : role==='staff' ? ['floor','requests'] : role==='purchasing' ? ['materials','report'] : role==='store' ? ['store'] : [];
 function parts(value) {
   const match=/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
@@ -56,8 +56,8 @@ export function allocationRows(movements,requests,from,to) {
 }
 export function materialActivity(movements,from,to) {
   const groups=new Map();for(const m of movementRows(movements,from,to)){
-    const g=groups.get(m.material_id)||{material_id:m.material_id,material_name:m.material_name,unit:m.unit,opening_additions:'0',purchase:'0',issue:'0',returned:'0',adjustment_in:'0',adjustment_out:'0',movement_count:0};
-    const mapping={opening_balance:['opening_additions',false],purchase:['purchase',false],production_issue:['issue',true],cancellation_return:['returned',false],stocktake_adjustment_in:['adjustment_in',false],stocktake_adjustment_out:['adjustment_out',true]};
+    const g=groups.get(m.material_id)||{material_id:m.material_id,material_name:m.material_name,unit:m.unit,opening_additions:'0',purchase:'0',issue:'0',returned:'0',adjustment_in:'0',adjustment_out:'0',store_transfer:'0',store_return:'0',store_sale:'0',store_sale_return:'0',movement_count:0};
+    const mapping={opening_balance:['opening_additions',false],purchase:['purchase',false],production_issue:['issue',true],cancellation_return:['returned',false],stocktake_adjustment_in:['adjustment_in',false],stocktake_adjustment_out:['adjustment_out',true],store_transfer:['store_transfer',true],store_return:['store_return',false],store_sale:['store_sale',true],store_sale_return:['store_sale_return',false]};
     const rule=mapping[m.reason];if(!rule)throw new Error('พบประเภทรายการที่รายงานยังไม่รองรับ');
     g[rule[0]]=sumAmounts([g[rule[0]],rule[1]?negative(m.delta):m.delta]);g.movement_count++;groups.set(m.material_id,g);
   }
@@ -65,11 +65,11 @@ export function materialActivity(movements,from,to) {
 }
 export function balanceMismatches(balances,activity) {
   const byId=new Map(activity.map(r=>[r.material_id,r]));const errors=[];
-  for(const b of balances){const a=byId.get(b.id);for(const key of ['opening_additions','purchase','issue','returned','adjustment_in','adjustment_out']){
+  for(const b of balances){const a=byId.get(b.id);for(const key of ['opening_additions','purchase','issue','returned','adjustment_in','adjustment_out','store_transfer','store_return','store_sale','store_sale_return']){
     if(sumAmounts([b[key]??0])!==sumAmounts([a?.[key]??0]))errors.push(`${b.name}: ${key}`);
   }
   if(sumAmounts([b.movement_count??0])!==sumAmounts([a?.movement_count??0]))errors.push(`${b.name}: movement_count`);
-  if(b.coverage==='complete' && sumAmounts([b.opening,b.opening_additions,b.purchase,negative(b.issue),b.returned,b.adjustment_in,negative(b.adjustment_out)])!==sumAmounts([b.closing]))errors.push(`${b.name}: closing`);
+  if(b.coverage==='complete' && sumAmounts([b.opening,b.opening_additions,b.purchase,negative(b.issue),b.returned,b.adjustment_in,negative(b.adjustment_out),negative(b.store_transfer??0),b.store_return??0,negative(b.store_sale??0),b.store_sale_return??0])!==sumAmounts([b.closing]))errors.push(`${b.name}: closing`);
   }
   for(const a of activity)if(!balances.some(b=>b.id===a.material_id))errors.push(`${a.material_name}: missing balance`);
   return errors;

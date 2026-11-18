@@ -512,3 +512,9 @@
 .store-sold-chip span{min-width:0;overflow-wrap:anywhere}
 .store-reason{display:grid;gap:4px;font-size:13px;margin:8px 0}
 .store-reason input{width:100%}
+
+/* receiving overview: collapsible groups */
+.receiving-group{background:var(--inv-panel);border:1px solid var(--inv-line);border-radius:12px;margin-bottom:8px;padding:0 12px}
+.receiving-group>summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:12px 0;cursor:pointer}
+.receiving-count{padding:1px 10px;border-radius:999px;background:#F1EEE6;font-size:12px}
+.receiving-group .receiving-history{padding-bottom:10px}
