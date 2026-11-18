@@ -33,6 +33,8 @@ test('counts one pair per request; Bangkok month edges; cancelled and not-comple
   assert.equal(r.categories.find(c => c.name === 'Sleepplug').pairs, 1);
   assert.equal(r.production[0].worker, 'Te');
   assert.equal(r.repairs[0].reason, 'ลูกค้า walk in');
+  assert.deepEqual(r.repairs[0].lines, [{material: 'IEM Cleaning Tool_pcs', qty: 1, unit: 'pcs'}]);
+  assert.deepEqual(r.repairMaterials, [{material: 'IEM Cleaning Tool_pcs', unit: 'pcs', qty: 1}]);
 });
 
 test('workbook has every sheet, whole-column SUMIF formulas and cached values', () => {

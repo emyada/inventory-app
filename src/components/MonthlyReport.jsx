@@ -13,6 +13,7 @@ function useLoad(load, deps) {
   return state;
 }
 const ALL = '__all__';
+const REPAIR = '__repair__';
 const fmt = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 2});
 
 function saveFile({filename, type, body}) {
@@ -47,9 +48,10 @@ export function MonthlyReport({api, revision}) {
 
   const shown = report.categories.filter(c => c.pairs > 0);
   const showAll = picked === ALL && shown.length > 0;
-  const active = showAll ? null : (shown.find(c => c.name === picked) || shown[0] || null);
-  const matTitle = showAll ? 'ทั้งหมด' : active?.name;
-  const matRows = showAll ? [...report.materialsAll].sort((a, b) => b.qty - a.qty || a.material.localeCompare(b.material)) : (active?.materials || []);
+  const showRepair = picked === REPAIR && report.repairs.length > 0;
+  const active = showAll || showRepair ? null : (shown.find(c => c.name === picked) || shown[0] || null);
+  const matTitle = showRepair ? 'ซ่อมและอื่นๆ' : showAll ? 'ทั้งหมด' : active?.name;
+  const matRows = showRepair ? report.repairMaterials : showAll ? [...report.materialsAll].sort((a, b) => b.qty - a.qty || a.material.localeCompare(b.material)) : (active?.materials || []);
   const download = () => {
     setMessage('');
     try {
@@ -72,8 +74,10 @@ export function MonthlyReport({api, revision}) {
       <div className="mr-left">
         <div className="mr-cats">
           <button type="button" className="mr-card mr-total" aria-pressed={showAll} onClick={() => setPicked(ALL)}><small>ผลิตทั้งหมด</small><strong>{fmt(report.totalPairs)}</strong><em>คู่</em><p>ซ่อมและอื่นๆ แยก {report.repairCount} รายการ</p></button>
-          {shown.map(c => <button type="button" key={c.name} className="mr-card mr-cat" aria-pressed={!showAll && active?.name === c.name} onClick={() => setPicked(c.name)}>
+          {shown.map(c => <button type="button" key={c.name} className="mr-card mr-cat" aria-pressed={!showAll && !showRepair && active?.name === c.name} onClick={() => setPicked(c.name)}>
             <small>{c.name}</small><strong>{fmt(c.pairs)}</strong><em>คู่</em><p>{c.models.length} รุ่น</p></button>)}
+          {report.repairs.length > 0 && <button type="button" className="mr-card mr-cat mr-repair" aria-pressed={showRepair} onClick={() => setPicked(REPAIR)}>
+            <small>ซ่อมและอื่นๆ</small><strong>{fmt(report.repairs.length)}</strong><em>รายการ</em><p>{report.repairMaterials.length} วัตถุดิบ</p></button>}
         </div>
         {!shown.length && <p className="inv-empty">เดือนนี้ยังไม่มีงานผลิต</p>}
         {showAll && <div className="mr-card"><h3>ทั้งหมด — แยกตามหมวดและรุ่น</h3>
@@ -82,6 +86,14 @@ export function MonthlyReport({api, revision}) {
             {c.models.map(m => <div className="mr-row mr-row-sub" key={m.model}><span>{m.model}</span><span>{fmt(m.pairs)}</span></div>)}
           </div>)}
           <div className="mr-row mr-row-head mr-row-total"><span>รวม</span><span>{fmt(report.totalPairs)}</span></div></div>}
+        {showRepair && <div className="mr-card"><h3>ซ่อมและอื่นๆ — เบิกอะไร เพราะอะไร</h3>
+          {report.repairs.map(r => <div className="mr-repair-item" key={r.request_id}>
+            <div className="mr-row mr-row-head"><span>{r.order || '-'}{r.model ? ` · ${r.model}` : ''}</span><span>{r.date} {r.time}</span></div>
+            <p className="inv-muted">เบิกโดย {r.worker || '-'}</p>
+            <p>เหตุผล: {r.reason || <span className="inv-muted">ไม่ได้ระบุ</span>}</p>
+            {r.lines.length ? r.lines.map((l, i) => <div className="mr-row mr-row-sub" key={i}><span>{l.material}</span><span>{fmt(l.qty)} {l.unit}</span></div>) : <p className="inv-muted">ไม่มีรายการวัตถุดิบ</p>}
+          </div>)}
+          <p className="inv-muted">ไม่นับเป็นยอดผลิต · วัตถุดิบของงานซ่อมรวมอยู่ในการ์ด "ผลิตทั้งหมด" ด้วย</p></div>}
         {active && <div className="mr-card"><h3>{active.name} — แยกตามรุ่น</h3>
           {active.models.map(m => <div className="mr-row" key={m.model}><span>{m.model}</span><span>{fmt(m.pairs)}</span></div>)}</div>}
       </div>
@@ -91,12 +103,6 @@ export function MonthlyReport({api, revision}) {
           {matRows.length > 8 && <details><summary>ดูทั้ง {matRows.length} รายการ</summary>
             {matRows.slice(8).map(m => <div className="mr-row" key={m.material + m.unit}><span>{m.material}</span><span>{fmt(m.qty)} {m.unit}</span></div>)}</details>}
           {showAll && report.repairCount > 0 && <p className="inv-muted">รวมวัตถุดิบของงานซ่อมและอื่นๆ ด้วย</p>}
-        </div>}
-        {report.repairs.length > 0 && <div className="mr-card"><h3>ซ่อมและอื่นๆ ({report.repairs.length} รายการ)</h3>
-          {report.repairs.slice(0, 8).map(r => <div className="mr-row" key={r.request_id}><span>{r.order || '-'} · {r.model || '-'}<small>{r.date} {r.time} · {r.worker}{r.reason ? ` · ${r.reason}` : ''}</small></span></div>)}
-          {report.repairs.length > 8 && <details><summary>ดูทั้ง {report.repairs.length} รายการ</summary>
-            {report.repairs.slice(8).map(r => <div className="mr-row" key={r.request_id}><span>{r.order || '-'} · {r.model || '-'}<small>{r.date} {r.time} · {r.worker}{r.reason ? ` · ${r.reason}` : ''}</small></span></div>)}</details>}
-          <p className="inv-muted">ไม่นับเป็นยอดผลิต · วัตถุดิบของงานซ่อมอยู่ในรวมวัตถุดิบ (กดการ์ด "ผลิตทั้งหมด")</p>
         </div>}
         {(report.unfinished.length > 0 || report.waitingPick > 0) && <div className="mr-card mr-unfinished"><h3>ไม่เสร็จ / ยกไปเดือนหน้า</h3>
           {report.unfinished.map(j => <div className="mr-row" key={j.id}><span>{j.order} · {j.model}<small>{j.worker}{j.continued ? ` · ทำต่อแล้ว ${j.continued.date}` : ' · ยังไม่ได้ทำต่อ'}</small></span><span>1 คู่</span></div>)}

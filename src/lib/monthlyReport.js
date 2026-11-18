@@ -35,6 +35,16 @@ const num = value => {
   return n;
 };
 
+function materialsOf(rows) {
+  const usage = new Map();
+  for (const m of rows) {
+    const k = `${m.material}\u0000${m.unit}`;
+    const cur = usage.get(k) || {material: m.material, unit: m.unit, qty: 0};
+    cur.qty = round(cur.qty + m.qty); usage.set(k, cur);
+  }
+  return [...usage.values()].sort((a, b) => b.qty - a.qty || a.material.localeCompare(b.material));
+}
+
 export function buildMonthlyReport(requests, from, to) {
   const production = [], materials = [], repairs = [];
   const inPeriod = r => { const day = localDay(r.created_at); return day >= from && day <= to; };
@@ -46,7 +56,7 @@ export function buildMonthlyReport(requests, from, to) {
       order: r.order_ref || '', worker: r.staff_name || '', request_id: r.id,
     };
     if (isRepair) {
-      repairs.push({...base, reason: r.note || ''});
+      repairs.push({...base, reason: r.note || '', lines: (r.bom_snapshot || []).map(l => ({material: l.material_name, qty: num(l.qty), unit: l.unit || ''}))});
     } else {
       production.push({...base, qty: 1});
     }
@@ -83,6 +93,7 @@ export function buildMonthlyReport(requests, from, to) {
     const cur = usageAll.get(k) || {material: m.material, unit: m.unit, qty: 0};
     cur.qty = round(cur.qty + m.qty); usageAll.set(k, cur);
   }
+  const repairMaterials = materialsOf(materials.filter(m => m.category === REPAIR_CATEGORY));
   // Jobs filed in this month that were closed as not completed; their stock movement is shown apart
   // from production and never counts as material used. Also: filed but not yet picked.
   const unfinished = unfinishedJobs(requests).filter(j => j.date >= from && j.date <= to);
@@ -95,7 +106,7 @@ export function buildMonthlyReport(requests, from, to) {
   const waitingPick = requests.filter(r => inPeriod(r) && ['pending', 'partially_picked'].includes(r.workflow_state)).length;
   return {
     unfinished, unfinishedLoss: [...loss.values()].sort((a, b) => a.material.localeCompare(b.material)), waitingPick,
-    from, to, production, materials, repairs, categories,
+    from, to, production, materials, repairs, repairMaterials, categories,
     totalPairs: production.reduce((a, p) => a + p.qty, 0), repairCount: repairs.length,
     materialsAll: [...usageAll.values()].sort((a, b) => a.material.localeCompare(b.material)),
   };
