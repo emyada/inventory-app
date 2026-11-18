@@ -8,7 +8,10 @@ test('history filters recorded evidence, orders newest first and retains decimal
  assert.equal(receivingRows(rows,{search:'user-24'})[0].id,'24');
  assert.equal(receivingRows(rows,{search:'RCV-24'})[0].delta,'0.125');
  assert.equal(receivingRows(rows)[0].id,'23');
- assert.equal(receivingRows([...rows,{...rows[0],reason:'stocktake_adjustment_in'}]).length,25);
+ // Stock added by a stocktake count is shown too (own type), other reasons stay out.
+ const withCount=[...rows,{...rows[0],id:'c1',reason:'stocktake_adjustment_in'},{...rows[0],id:'x1',reason:'production_issue'}];
+ assert.equal(receivingRows(withCount).length,26);
+ assert.equal(receivingRows(withCount,{type:'Counted Up'}).length,1);
 });
 test('Bangkok boundaries and invalid ranges',()=>{
  assert.equal(receivingRows([{...rows[0],occurred_at:'2026-10-31T17:00:00Z'}],{from:'2026-11-01',to:'2026-11-01'}).length,1);
