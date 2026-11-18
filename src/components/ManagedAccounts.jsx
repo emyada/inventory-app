@@ -41,7 +41,6 @@ export function ManagedAccounts() {
   return <>
     <button type="button" className="inv-hdr-icon" aria-label="จัดการบัญชีผู้ใช้" title="จัดการบัญชีผู้ใช้" disabled={busy} aria-expanded={open} onClick={()=>{setOpen(!open);if(!open) void run();}}><Users size={18}/></button>
     {open&&<div className="inv-hdr-panel"><button type="button" className="inv-hdr-close" aria-label="ปิดแผงจัดการบัญชี" onClick={()=>setOpen(false)}>ปิด</button><fieldset disabled={busy}><legend>บัญชีพนักงาน</legend>
-      <button type="button" onClick={()=>void run({action:'health'})}>ตรวจความพร้อมบริการบัญชี (ไม่เขียนข้อมูล)</button>
       <label>เลือกบัญชี <select value={id} onChange={e=>{setId(e.target.value);setMessage('');}}><option value="">สร้างบัญชีใหม่</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.username} · {a.enabled?'เปิดใช้งาน':'ระงับ'}</option>)}</select></label>
       <form key={id} onSubmit={submit}>
         {!selected&&<label>ชื่อผู้ใช้ <input name="username" required maxLength={64} autoCapitalize="none"/></label>}
@@ -51,6 +50,7 @@ export function ManagedAccounts() {
         <button value={selected?'edit':'create'}>{selected?'บันทึกชื่อและสิทธิ์':'สร้างบัญชี'}</button>
         {selected&&<><button value="reset">ตั้งรหัสผ่านใหม่</button><button type="button" onClick={()=>void run({action:selected.enabled?'disable':'enable',id})}>{selected.enabled?'ระงับบัญชี':'เปิดใช้บัญชี'}</button></>}
       </form><span role="status">{busy?'กำลังดำเนินการ…':message}</span>
+      <details className="inv-adv"><summary>ทดสอบระบบ</summary><button type="button" onClick={()=>void run({action:'health'})}>ทดสอบระบบบัญชี</button><p className="inv-muted">ใช้เมื่อสร้างบัญชีหรือเปลี่ยนรหัสไม่สำเร็จ ไม่แก้ไขข้อมูลใดๆ</p></details>
     </fieldset></div>}
   </>;
 }
