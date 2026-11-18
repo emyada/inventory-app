@@ -481,3 +481,32 @@
 .inv-adv { margin-top: 12px; font-size: 13px; color: var(--inv-muted); }
 .inv-adv > summary { cursor: pointer; }
 .inv-adv > p { margin: 6px 0 0; }
+
+/* store stock: compact cards, low-stock warning, transfer history, sold board */
+.store-stock-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.store-stock-card{padding:10px 12px;font-size:13px}
+.store-stock-card h3{font-size:14px;margin:0;line-height:1.25;overflow-wrap:anywhere}
+.store-stock-card p{margin:2px 0}
+.store-stock-card .inv-balance{font-size:20px}
+.store-stock-card button{min-height:32px;font-size:12px}
+.store-card-top{display:flex;gap:6px;align-items:flex-start;justify-content:space-between}
+.store-min-btn{flex:none;padding:2px 8px;border-radius:999px;border:1px solid var(--inv-line);background:#fff}
+.store-min-form{position:absolute;z-index:5;left:6px;right:6px;top:6px;padding:8px;border-radius:10px;background:#fff;border:1px solid var(--inv-line);box-shadow:0 6px 18px rgba(0,0,0,.18);display:grid;gap:6px}
+.store-stock-card{position:relative}
+.store-stock-card.is-low{border-color:#e0a800;background:#fff8e1}
+.store-stock-card.is-out{border-color:#c62828;background:#fdecec}
+.store-level{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.store-level.low{background:#e0a800;color:#fff}
+.store-level.out{background:#c62828;color:#fff}
+.store-low-banner{margin:8px 0;padding:8px 12px;border-radius:10px;background:#fff3cd;color:#7a5600}
+.store-transfer-list{list-style:none;margin:8px 0;padding:0;display:grid;gap:8px}
+.store-transfer-list li{padding:10px 12px;border:1px solid var(--inv-line);border-left-width:4px;border-radius:10px;background:#fff}
+.store-transfer-list li.fwd{border-left-color:#2e7d32}
+.store-transfer-list li.back{border-left-color:#ef6c00}
+.store-transfer-head{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between}
+.store-sold-board{margin:10px 0;padding:10px 12px;border:1px solid var(--inv-line);border-radius:12px;background:#fff}
+.store-sold-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.store-sold-head h3{margin:0}
+.store-sold-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
+.store-sold-chip{display:flex;justify-content:space-between;gap:6px;padding:6px 10px;border-radius:8px;background:#F1EEE6;font-size:13px}
+.store-sold-chip span{min-width:0;overflow-wrap:anywhere}

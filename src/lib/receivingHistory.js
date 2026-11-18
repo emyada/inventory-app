@@ -1,7 +1,7 @@
 import {localDay,validatePeriod} from './inventoryReports.js';
-export const receivingType=row=>row.reason==='purchase'?'Purchased':row.reason==='cancellation_return'?'Returned to Stock':row.reason==='stocktake_adjustment_in'?'Counted Up':null;
+export const receivingType=row=>row.reason==='purchase'?'Purchased':row.reason==='cancellation_return'?'Returned to Stock':row.reason==='stocktake_adjustment_in'?'Counted Up':row.reason==='store_return'?'Returned from Store':null;
 // Thai names shown to people; the English keys above stay as internal filter values.
-export const receivingLabels=Object.freeze({All:'ทั้งหมด',Purchased:'ซื้อเข้า','Returned to Stock':'คืนจากการยกเลิก','Counted Up':'เพิ่มจากการนับสต็อก'});
+export const receivingLabels=Object.freeze({All:'ทั้งหมด',Purchased:'ซื้อเข้า','Returned to Stock':'คืนจากการยกเลิก','Counted Up':'เพิ่มจากการนับสต็อก','Returned from Store':'คืนจากหน้าร้าน'});
 export function receivingRows(rows,{search='',type='All',from='',to=''}={}) {
  if(from||to)validatePeriod(from||'0001-01-01',to||'9999-12-31');
  const term=search.trim().toLocaleLowerCase();
