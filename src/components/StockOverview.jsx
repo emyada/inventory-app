@@ -1,7 +1,10 @@
 import {useRefreshRead} from '../hooks/useRefreshRead.js';
 import React,{useState} from 'react';
 import {loadAllMovements,localDay} from '../lib/inventoryReports.js';
-import {receivingRows,receivingType,receivingLabels} from '../lib/receivingHistory.js';
+import {receivingRows,receivingType,receivingLabels,receivingGroups} from '../lib/receivingHistory.js';
+function ReceivingRow({r}){
+ return <details className="inv-card"><summary>{r.material_name} · {r.delta} {r.unit} · {localDay(r.occurred_at)} · {receivingLabels[receivingType(r)]}</summary><dl>{[['อ้างอิง',r.reference],['ผู้บันทึก',r.actor_name||'ไม่ทราบชื่อ'],['เวลา',new Date(r.occurred_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})],['ผู้ขาย',r.receipt_document?.supplier_source],['PO',r.receipt_document?.po_number],['Invoice',r.receipt_document?.invoice_number],['หมายเหตุ',r.note]].map(([label,value])=><React.Fragment key={label}><dt>{label}</dt><dd>{value??'ไม่มีข้อมูลบันทึก'}</dd></React.Fragment>)}</dl></details>;
+}
 export function StockOverview({api,role,revision}) {
  const [data,setData]=useState(null),[error,setError]=useState(null),[reload,setReload]=useState(0);
  const [history,setHistory]=useState(false),[search,setSearch]=useState(''),[type,setType]=useState('All'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[page,setPage]=useState(0);
@@ -15,11 +18,14 @@ export function StockOverview({api,role,revision}) {
  const change=setter=>e=>{setter(e.target.value);setPage(0);};
  return <section aria-label="Stock Overview">
   <h2>ภาพรวมคลัง</h2>
-  <div className="inv-toolbar"><h3>{history?'ประวัติรับเข้า':'รับเข้าล่าสุด 5 รายการ'}</h3><button onClick={()=>{setHistory(!history);setPage(0);}}>{history?'กลับภาพรวม':'ดูประวัติทั้งหมด'}</button></div>
+  <div className="inv-toolbar"><h3>{history?'ประวัติรับเข้า':'รับเข้าล่าสุด'}</h3><button onClick={()=>{setHistory(!history);setPage(0);}}>{history?'กลับภาพรวม':'ดูประวัติทั้งหมด'}</button></div>
   {history&&<div className="inv-filters"><label>ค้นหาประวัติ<input value={search} onChange={change(setSearch)} placeholder="วัตถุดิบ / อ้างอิง / ผู้บันทึก"/></label><label>ประเภท<select aria-label="ประเภท" value={type} onChange={change(setType)}>{['All','Purchased','Returned to Stock','Counted Up','Returned from Store'].map(t=><option key={t} value={t}>{receivingLabels[t]}</option>)}</select></label><label>จากวันที่<input type="date" value={from} onChange={change(setFrom)}/></label><label>ถึงวันที่<input type="date" value={to} onChange={change(setTo)}/></label></div>}
   {failed?<p role="alert">โหลดประวัติไม่สำเร็จ <button onClick={()=>setReload(v=>v+1)}>ลองใหม่</button></p>:!ready?<p role="status">กำลังโหลดประวัติ…</p>:invalid?<p role="alert">{invalid}</p>:<>
-   {!rows.length&&<p>ไม่มีประวัติรับเข้าตามตัวกรอง</p>}
-   <div className="receiving-history">{rows.slice(history?current*20:0,history?current*20+20:5).map(r=><details className="inv-card" key={r.id}><summary>{r.material_name} · {r.delta} {r.unit} · {localDay(r.occurred_at)} · {receivingLabels[receivingType(r)]}</summary><dl>{[['อ้างอิง',r.reference],['ผู้บันทึก',r.actor_name||'ไม่ทราบชื่อ'],['เวลา',new Date(r.occurred_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})],['ผู้ขาย',r.receipt_document?.supplier_source],['PO',r.receipt_document?.po_number],['Invoice',r.receipt_document?.invoice_number],['หมายเหตุ',r.note]].map(([label,value])=><React.Fragment key={label}><dt>{label}</dt><dd>{value??'ไม่มีข้อมูลบันทึก'}</dd></React.Fragment>)}</dl></details>)}</div>
+   {history&&!rows.length&&<p>ไม่มีประวัติรับเข้าตามตัวกรอง</p>}
+   {history?<div className="receiving-history">{rows.slice(current*20,current*20+20).map(r=><ReceivingRow key={r.id} r={r}/>)}</div>
+   :<div className="receiving-groups">{receivingGroups(rows).map(g=><details className="receiving-group" key={g.type}><summary><span>{g.label}</span><span className="receiving-count">{g.count}</span>{g.latest&&<small className="inv-muted">ล่าสุด {g.latest.material_name} · {localDay(g.latest.occurred_at)}</small>}</summary>
+    {!g.rows.length?<p className="inv-muted">ยังไม่มีรายการ</p>:<div className="receiving-history">{g.rows.map(r=><ReceivingRow key={r.id} r={r}/>)}{g.count>g.rows.length&&<p className="inv-muted">แสดง {g.rows.length} จาก {g.count} รายการ — กด "ดูประวัติทั้งหมด" เพื่อดูที่เหลือ</p>}</div>}
+   </details>)}</div>}
    {history&&<div className="inv-actions"><button disabled={!current} onClick={()=>setPage(current-1)}>ก่อนหน้า</button><span>{current+1} / {last+1} · {rows.length} รายการ</span><button disabled={current===last} onClick={()=>setPage(current+1)}>ถัดไป</button></div>}
   </>}
  </section>;

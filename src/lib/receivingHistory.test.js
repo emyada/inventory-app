@@ -18,3 +18,12 @@ test('Bangkok boundaries and invalid ranges',()=>{
  assert.equal(receivingRows([{...rows[0],occurred_at:'2026-10-31T16:59:59Z'}],{from:'2026-11-01',to:'2026-11-01'}).length,0);
  assert.throws(()=>receivingRows(rows,{from:'2026-11-02',to:'2026-11-01'}));
 });
+
+import {receivingGroups} from './receivingHistory.js';
+test('receivingGroups splits purchases / cancellation returns / store returns / counts, newest first, capped',()=>{
+ const mk=(id,reason,t)=>({id,reason,delta:'1',occurred_at:t,sequence_no:id,material_name:'M'+id});
+ const rows=receivingRows([mk(1,'purchase','2026-11-01T00:00:00Z'),mk(2,'cancellation_return','2026-11-02T00:00:00Z'),mk(3,'purchase','2026-11-03T00:00:00Z'),mk(4,'store_return','2026-11-04T00:00:00Z'),mk(5,'production_issue','2026-11-05T00:00:00Z')]);
+ const g=Object.fromEntries(receivingGroups(rows,1).map(x=>[x.type,x]));
+ assert.equal(g.Purchased.count,2);assert.equal(g.Purchased.rows.length,1);assert.equal(g.Purchased.rows[0].id,3);
+ assert.equal(g['Returned to Stock'].count,1);assert.equal(g['Returned from Store'].count,1);assert.equal(g['Counted Up'].count,0);
+});
