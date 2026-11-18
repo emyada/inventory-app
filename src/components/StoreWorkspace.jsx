@@ -5,8 +5,9 @@ import {ModalHeader} from './InventoryUI.jsx';
 import {ReportTable} from './InventoryReports.jsx';
 import {managementCatalog} from '../lib/inventoryModelCatalog.js';
 import {localDay, reportCSV} from '../lib/inventoryReports.js';
+import {monthRange, currentMonth, shiftMonth, monthLabel} from '../lib/monthlyReport.js';
 import {downloadCSV} from '../utils/csv.js';
-import {addToCart, cartLines, linesSummary, parseDuplicateSale, optionalSaleTag, parseQty, storeError, storeSaleStatusLabel, daysWaiting, pendingSummary, PENDING_TAG_WARN_DAYS, validateSaleTag} from '../lib/storeApi.js';
+import {stockLevel, lowStockCount, sortLowFirst, parseMinQty, soldBoard, addToCart, cartLines, linesSummary, parseDuplicateSale, optionalSaleTag, parseQty, storeError, storeSaleStatusLabel, daysWaiting, pendingSummary, PENDING_TAG_WARN_DAYS, validateSaleTag} from '../lib/storeApi.js';
 
 const fmtTime = value => new Date(value).toLocaleString('th-TH', {timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short'});
 const fmtQty = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 3});
@@ -185,25 +186,55 @@ function AdjustRow({api, item, onChanged}) {
     {op.operation && <OpResult operation={op.operation} onSuccess={() => { setOpen(false); op.reset(); onChanged(); }} onFailure={e => { op.setError(storeError(e)); op.reset(); }}/>}
   </form>;
 }
-export function StoreStock({api, role, revision, onChanged, actionBusy, onTransfer}) {
+function MinRow({api, item, onChanged}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const op = useOperation();
+  const has = item.min_qty !== null && item.min_qty !== undefined;
+  function submit(e) {
+    e.preventDefault();
+    op.run(() => api.store_set_min({item_kind: item.item_kind, item_id: item.item_id, min_qty: parseMinQty(value)}));
+  }
+  if (!open) return <button type="button" className="store-min-btn" aria-label={`ตั้งจุดเตือน ${item.name}`} title="ตั้งจุดเตือนใกล้หมด" onClick={() => { setValue(has ? String(item.min_qty) : ''); setOpen(true); }}>🔔{has ? ` ${fmtQty(item.min_qty)}` : ''}</button>;
+  return <form className="store-min-form" onSubmit={submit}>
+    <label>เตือนเมื่อเหลือ ≤ ({item.unit})<input inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)} placeholder="เว้นว่าง = ไม่เตือน"/></label>
+    {op.error && <p role="alert">{op.error}</p>}
+    <button type="submit" disabled={op.busy}>บันทึก</button>
+    <button type="button" disabled={op.busy} onClick={() => { setOpen(false); op.reset(); op.setError(null); }}>ปิด</button>
+    {op.operation && <OpResult operation={op.operation} onSuccess={() => { setOpen(false); op.reset(); onChanged(); }} onFailure={e => { op.setError(storeError(e)); op.reset(); }}/>}
+  </form>;
+}
+export function StoreStock({api, role, revision, onChanged, actionBusy, onTransfer, onHistory}) {
   const stock = useStoreRead(() => api.store_list_stock(), revision);
+  const rows = useMemo(() => sortLowFirst(stock.data || []), [stock.data]);
+  const warn = lowStockCount(rows);
   return <section>
     <div className="inv-toolbar"><h2>ยอดคงเหลือหน้าร้าน</h2>
-      {role === 'admin' && <button type="button" className="inv-primary" disabled={actionBusy} onClick={onTransfer}>โอนของไปหน้าร้าน</button>}</div>
+      <button type="button" onClick={onHistory}>ประวัติการโอน</button>
+      {role === 'admin' && <button type="button" className="inv-primary" disabled={actionBusy} onClick={() => onTransfer('to_store')}>โอนของไปหน้าร้าน</button>}
+      {role === 'admin' && <button type="button" disabled={actionBusy} onClick={() => onTransfer('to_main')}>โอนคืนคลังหลัก</button>}</div>
     <ReadNote state={stock}/>
-    {!stock.busy && !stock.error && !stock.data?.length && <p className="inv-empty">หน้าร้านยังไม่มีของ</p>}
-    <div className="grid-list">{(stock.data || []).map(i => <article className="inv-card" key={`${i.item_kind}:${i.item_id}`}>
-      <h3>{i.name}</h3>
-      <p className="inv-muted">{i.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''}</p>
-      <p><strong className="inv-balance">{fmtQty(i.qty)}</strong> <span className="inv-muted">{i.unit}</span></p>
-      {role === 'admin' && <AdjustRow api={api} item={i} onChanged={onChanged}/>}
-    </article>)}</div>
+    {warn > 0 && <div role="status" className="store-low-banner">⚠️ ใกล้หมด/หมด {warn} รายการ (เรียงไว้บนสุด)</div>}
+    {!stock.busy && !stock.error && !rows.length && <p className="inv-empty">หน้าร้านยังไม่มีของ</p>}
+    <div className="grid-list store-stock-grid">{rows.map(i => {
+      const level = stockLevel(i);
+      return <article className={`inv-card store-stock-card${level !== 'ok' ? ` is-${level}` : ''}`} key={`${i.item_kind}:${i.item_id}`}>
+        <div className="store-card-top"><h3>{i.name}</h3>{role === 'admin' && <MinRow api={api} item={i} onChanged={onChanged}/>}</div>
+        <p className="inv-muted">{i.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}{i.category ? ` · ${i.category}` : ''}</p>
+        <p><strong className="inv-balance">{fmtQty(i.qty)}</strong> <span className="inv-muted">{i.unit}</span>
+          {level === 'out' && <span className="store-level out">หมด</span>}{level === 'low' && <span className="store-level low">ใกล้หมด</span>}</p>
+        {role !== 'admin' && i.min_qty !== null && i.min_qty !== undefined && level !== 'ok' && <p className="inv-muted">จุดเตือน {fmtQty(i.min_qty)}</p>}
+        {role === 'admin' && <AdjustRow api={api} item={i} onChanged={onChanged}/>}
+      </article>;
+    })}</div>
   </section>;
 }
 
 /* ---------------- Transfer main → storefront (head of stock) ---------------- */
-export function StoreTransferForm({api, onClose, onSuccess}) {
-  const [lists, setLists] = useState({busy: true, models: [], materials: [], error: null});
+export function StoreTransferForm({api, onClose, onSuccess, initialDir = 'to_store'}) {
+  const [dir, setDir] = useState(initialDir);
+  const toMain = dir === 'to_main';
+  const [lists, setLists] = useState({busy: true, models: [], materials: [], storeStock: [], error: null});
   const [kind, setKind] = useState('model');
   const [itemId, setItemId] = useState('');
   const [qty, setQty] = useState('1');
@@ -213,17 +244,22 @@ export function StoreTransferForm({api, onClose, onSuccess}) {
   const op = useOperation();
   useEffect(() => {
     let alive = true;
-    Promise.all([managementCatalog.listModels(), api.list_materials({include_inactive: false})])
-      .then(([models, materials]) => { if (alive) setLists({busy: false, error: null, models: models.filter(m => m.is_active).sort((a, b) => a.name.localeCompare(b.name)), materials: materials.filter(m => m.is_active !== false).sort((a, b) => a.name.localeCompare(b.name))}); })
-      .catch(e => { if (alive) setLists({busy: false, error: e.message, models: [], materials: []}); });
+    Promise.all([managementCatalog.listModels(), api.list_materials({include_inactive: false}), api.store_list_stock()])
+      .then(([models, materials, storeStock]) => { if (alive) setLists({busy: false, error: null, storeStock: storeStock || [], models: models.filter(m => m.is_active).sort((a, b) => a.name.localeCompare(b.name)), materials: materials.filter(m => m.is_active !== false).sort((a, b) => a.name.localeCompare(b.name))}); })
+      .catch(e => { if (alive) setLists({busy: false, error: e.message, models: [], materials: [], storeStock: []}); });
     return () => { alive = false; };
   }, [api]);
-  const options = kind === 'model' ? lists.models : lists.materials;
+  const storeOptions = useMemo(() => lists.storeStock.filter(r => r.item_kind === kind && Number(r.qty) > 0).map(r => ({id: r.item_id, name: r.name, unit: r.unit, qty: r.qty, category: r.category})).sort((a, b) => a.name.localeCompare(b.name, 'th')), [lists.storeStock, kind]);
+  const options = toMain ? storeOptions : kind === 'model' ? lists.models : lists.materials;
+  function switchDir(next) { setDir(next); setRows([]); setItemId(''); setConfirmed(false); op.setError(null); }
   function add() {
     try {
       const item = options.find(o => o.id === itemId);
       if (!item) throw new Error('เลือกรายการก่อน');
-      setRows(addToCart(rows, {kind, id: item.id, name: item.name, unit: kind === 'model' ? 'ชุด' : item.unit}, parseQty(qty, kind)));
+      const wanted = parseQty(qty, kind);
+      const already = rows.filter(r => r.kind === kind && r.id === item.id).reduce((n, r) => n + r.qty, 0);
+      if (toMain && already + wanted > Number(item.qty)) throw new Error(`หน้าร้านมี ${item.name} แค่ ${fmtQty(item.qty)} ${item.unit}`);
+      setRows(addToCart(rows, {kind, id: item.id, name: item.name, unit: kind === 'model' ? 'ชุด' : item.unit}, wanted));
       setItemId(''); setQty('1'); op.setError(null);
     } catch (e) { op.setError(e.message); }
   }
@@ -232,30 +268,53 @@ export function StoreTransferForm({api, onClose, onSuccess}) {
     op.run(() => {
       if (!rows.length) throw new Error('เพิ่มรายการที่จะโอนอย่างน้อย 1 รายการ');
       if (!confirmed) throw new Error('กรุณายืนยันก่อนโอน');
-      return api.store_transfer({lines: cartLines(rows), note: note.trim() || undefined});
+      const args = {lines: cartLines(rows), note: note.trim() || undefined};
+      return toMain ? api.store_return(args) : api.store_transfer(args);
     });
   }
   return <section className="inv-form">
-    <ModalHeader title="โอนของไปหน้าร้าน" onClose={onClose} busy={op.busy}/>
-    <p className="inv-muted">ชุดสำเร็จรูป: ระบบตัดวัตถุดิบออกจากคลังหลักตาม BOM × จำนวนชุด ทันที แล้วนับเป็นของหน้าร้าน · อะไหล่: ย้ายจำนวนจากคลังหลักไปหน้าร้านตรงๆ</p>
+    <ModalHeader title={toMain ? 'โอนคืนไปคลังหลัก' : 'โอนของไปหน้าร้าน'} onClose={onClose} busy={op.busy}/>
+    <div className="inv-subnav"><button type="button" aria-pressed={!toMain} onClick={() => switchDir('to_store')}>คลังหลัก → หน้าร้าน</button>
+      <button type="button" aria-pressed={toMain} onClick={() => switchDir('to_main')}>หน้าร้าน → คลังหลัก (คืน)</button></div>
+    {toMain ? <p className="inv-muted">คืนของที่หน้าร้านกลับคลังหลัก: หน้าร้านถูกหักก่อน แล้วคลังหลักได้เพิ่ม · ชุดสำเร็จรูป: ระบบคืนวัตถุดิบเข้าคลังหลักตาม BOM ปัจจุบัน × จำนวนชุด · อะไหล่: คืนจำนวนตรงๆ</p> : <p className="inv-muted">ชุดสำเร็จรูป: ระบบตัดวัตถุดิบออกจากคลังหลักตาม BOM × จำนวนชุด ทันที แล้วนับเป็นของหน้าร้าน · อะไหล่: ย้ายจำนวนจากคลังหลักไปหน้าร้านตรงๆ</p>}
     {lists.error && <p role="alert">{lists.error}</p>}
     <form onSubmit={submit}><fieldset disabled={op.busy || lists.busy}>
       <div className="inv-subnav"><button type="button" aria-pressed={kind === 'model'} onClick={() => { setKind('model'); setItemId(''); }}>ชุดสำเร็จรูป (ตามรุ่น)</button>
         <button type="button" aria-pressed={kind === 'material'} onClick={() => { setKind('material'); setItemId(''); }}>อะไหล่แยกขาย</button></div>
       <div className="inv-bom-entry">
         <label>{kind === 'model' ? 'รุ่น' : 'อะไหล่'}<select value={itemId} onChange={e => setItemId(e.target.value)}>
-          <option value="">เลือก…</option>{options.map(o => <option key={o.id} value={o.id}>{o.name}{kind === 'model' ? ` (${o.category})` : ` — คลังหลัก ${fmtQty(o.qty)} ${o.unit}`}</option>)}</select></label>
+          <option value="">เลือก…</option>{options.map(o => <option key={o.id} value={o.id}>{o.name}{toMain ? ` — หน้าร้านมี ${fmtQty(o.qty)} ${kind === 'model' ? 'ชุด' : o.unit}` : kind === 'model' ? ` (${o.category})` : ` — คลังหลัก ${fmtQty(o.qty)} ${o.unit}`}</option>)}</select></label>
         <label>จำนวน<input inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)}/></label>
         <button type="button" className="inv-icon" aria-label="เพิ่มรายการ" onClick={add}>＋</button>
       </div>
       <ul className="inv-bom-rows">{rows.map(r => <li key={`${r.kind}:${r.id}`}><span>{r.name}<small>{r.kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'}</small></span><strong>×{fmtQty(r.qty)} {r.unit}</strong>
         <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} onClick={() => setRows(rows.filter(x => x !== r))}>✕</button></li>)}</ul>
       <label>หมายเหตุ (ไม่บังคับ)<input value={note} onChange={e => setNote(e.target.value)} placeholder="เช่น ล็อตเดือน พ.ย."/></label>
-      <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}/>ยืนยัน: ตัดวัตถุดิบจากคลังหลักและย้ายไปหน้าร้านตามรายการนี้</label>
+      <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}/>{toMain ? 'ยืนยัน: หักของจากหน้าร้านและคืนเข้าคลังหลักตามรายการนี้' : 'ยืนยัน: ตัดวัตถุดิบจากคลังหลักและย้ายไปหน้าร้านตามรายการนี้'}</label>
       {op.error && <p role="alert">{op.error}</p>}
-      <button type="submit" className="inv-primary" disabled={!rows.length || !confirmed}>โอนไปหน้าร้าน</button>
+      <button type="submit" className="inv-primary" disabled={!rows.length || !confirmed}>{toMain ? 'โอนคืนไปคลังหลัก' : 'โอนไปหน้าร้าน'}</button>
     </fieldset></form>
     {op.operation && <OpResult operation={op.operation} onSuccess={() => { op.reset(); onSuccess(); onClose(); }} onFailure={e => { op.setError(storeError(e)); op.reset(); }}/>}
+  </section>;
+}
+
+/* ---------------- Transfer history (both directions) ---------------- */
+export function StoreTransferHistory({api, revision, onClose}) {
+  const [month, setMonth] = useState(currentMonth());
+  const {from, to} = monthRange(month.year, month.month);
+  const state = useStoreRead(() => api.store_list_transfers({date_from: from, date_to: to, timezone: 'Asia/Bangkok', limit: 300}), revision, [from, to]);
+  const rows = state.data || [];
+  return <section className="inv-form">
+    <ModalHeader title="ประวัติการโอนหน้าร้าน ↔ คลังหลัก" onClose={onClose}/>
+    <div className="mr-month"><button type="button" aria-label="เดือนก่อน" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button><span>{monthLabel(month)}</span><button type="button" aria-label="เดือนถัดไป" onClick={() => setMonth(shiftMonth(month, 1))}>›</button></div>
+    <ReadNote state={state}/>
+    {!state.busy && !state.error && !rows.length && <p className="inv-empty">เดือนนี้ยังไม่มีการโอน</p>}
+    <ul className="store-transfer-list">{rows.map(t => <li key={t.operation_id} className={t.kind === 'transfer_out' ? 'back' : 'fwd'}>
+      <div className="store-transfer-head"><strong>{t.kind === 'transfer_out' ? '↩ คืนคลังหลัก (หน้าร้าน → คลังหลัก)' : '➜ ไปหน้าร้าน (คลังหลัก → หน้าร้าน)'}</strong>
+        <span className="inv-muted">{fmtTime(t.occurred_at)} · {t.actor_name || '-'}</span></div>
+      <div>{(t.lines || []).map(l => `${l.name} ×${fmtQty(l.qty)} ${l.item_kind === 'model' ? 'ชุด' : l.unit || ''}`.trim()).join(', ')}</div>
+      {t.note && <div className="inv-muted">หมายเหตุ: {t.note}</div>}
+    </li>)}</ul>
   </section>;
 }
 
@@ -317,6 +376,20 @@ function SaleCard({api, s, role, userId, actionBusy, cancelling, setCancelling, 
   </article>;
 }
 
+function StoreSoldBoard({api, revision}) {
+  const [month, setMonth] = useState(currentMonth());
+  const {from, to} = monthRange(month.year, month.month);
+  const state = useStoreRead(() => api.store_report({date_from: from, date_to: to, timezone: 'Asia/Bangkok'}), revision, [from, to]);
+  const items = useMemo(() => soldBoard(state.data?.items, state.data?.main_sales), [state.data]);
+  return <div className="store-sold-board">
+    <div className="store-sold-head"><h3>ขายอะไรไปบ้าง</h3>
+      <div className="mr-month"><button type="button" aria-label="เดือนก่อน" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button><span>{monthLabel(month)}</span><button type="button" aria-label="เดือนถัดไป" onClick={() => setMonth(shiftMonth(month, 1))}>›</button></div></div>
+    <ReadNote state={state}/>
+    {!state.busy && !state.error && !items.length && <p className="inv-empty">เดือนนี้ยังไม่มีการขาย</p>}
+    <div className="store-sold-grid">{items.map(i => <div key={i.key} className="store-sold-chip"><span>{i.name}{i.kind === 'main' ? <small> (คลังหลัก)</small> : null}</span><strong>{fmtQty(i.qty)} <small>{i.kind === 'model' ? 'ชุด' : i.unit}</small></strong></div>)}</div>
+  </div>;
+}
+
 export function StoreSales({api, role, userId, revision, onChanged, actionBusy}) {
   const today = localDay(new Date());
   const [from, setFrom] = useState(today.slice(0, 8) + '01');
@@ -332,6 +405,7 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
   return <section>
     <div className="inv-toolbar"><h2>รายการขายหน้าร้าน</h2>
       <button type="button" disabled={!rows.length} onClick={() => downloadCSV(`store_sales_${from}_${to}.csv`, reportCSV(rows, saleColumns, {from, to, timezone: 'Asia/Bangkok'}))}>ส่งออก CSV</button></div>
+    <StoreSoldBoard api={api} revision={revision}/>
     <div className="inv-filters">
       <label>ตั้งแต่<input type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)}/></label>
       <label>ถึง<input type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)}/></label>
@@ -352,7 +426,8 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
 export function StoreWorkspace({api, role, userId, revision, onChanged, actionBusy}) {
   const modes = role === 'store' ? [['sell', 'ขาย'], ['other', 'อื่นๆ'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['report', 'รายงาน']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย'], ['other', 'อื่นๆ'], ['report', 'รายงาน']];
   const [mode, setMode] = useState(modes[0][0]);
-  const [transfer, setTransfer] = useState(false);
+  const [transfer, setTransfer] = useState(false); // false | 'to_store' | 'to_main'
+  const [history, setHistory] = useState(false);
   const today = localDay(new Date());
   const pendingRead = useStoreRead(() => api.store_list_sales({date_from: today, date_to: today, timezone: 'Asia/Bangkok', limit: 1000}), revision);
   const pend = useMemo(() => pendingSummary((pendingRead.data || []).filter(s => s.status === 'active')), [pendingRead.data]);
@@ -364,16 +439,18 @@ export function StoreWorkspace({api, role, userId, revision, onChanged, actionBu
     </div>}
     {mode === 'sell' && <StoreSell api={api} role={role} source="store" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'other' && <StoreSell api={api} role={role} source="main" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
-    {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={() => setTransfer(true)}/>}
+    {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={dir => setTransfer(dir || 'to_store')} onHistory={() => setHistory(true)}/>}
     {mode === 'sales' && <StoreSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'report' && <StoreReports api={api} revision={revision}/>}
-    {transfer && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="โอนของไปหน้าร้าน">
-      <StoreTransferForm api={api} onClose={() => setTransfer(false)} onSuccess={onChanged}/></div></div>}
+    {transfer && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="โอนของระหว่างคลังหลักกับหน้าร้าน">
+      <StoreTransferForm api={api} initialDir={transfer} onClose={() => setTransfer(false)} onSuccess={onChanged}/></div></div>}
+    {history && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="ประวัติการโอน">
+      <StoreTransferHistory api={api} revision={revision} onClose={() => setHistory(false)}/></div></div>}
   </>;
 }
 
 /* ---------------- Reports: storefront + combined balance (admin / purchasing) ---------------- */
-const storeReportColumns = [['name', 'รายการ'], ['kind_label', 'ประเภท'], ['unit', 'หน่วย'], ['opening', 'ต้นงวด'], ['transfer_in', 'รับจากคลังหลัก'], ['sold', 'ขาย'], ['sale_cancelled', 'ยกเลิกขาย (คืน)'], ['adjust_in', 'ปรับเพิ่ม'], ['adjust_out', 'ปรับลด'], ['closing', 'คงเหลือ']];
+const storeReportColumns = [['name', 'รายการ'], ['kind_label', 'ประเภท'], ['unit', 'หน่วย'], ['opening', 'ต้นงวด'], ['transfer_in', 'รับจากคลังหลัก'], ['transfer_out', 'โอนคืนคลังหลัก'], ['sold', 'ขาย'], ['sale_cancelled', 'ยกเลิกขาย (คืน)'], ['adjust_in', 'ปรับเพิ่ม'], ['adjust_out', 'ปรับลด'], ['closing', 'คงเหลือ']];
 export function StoreReports({api, revision}) {
   // The store tab shows only sets left at the storefront and store movements; main-stock totals live in the Report tab.
   const today = localDay(new Date());

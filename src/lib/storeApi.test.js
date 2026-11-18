@@ -47,3 +47,28 @@ test('store RPC contracts', () => {
   assert.equal(mutationParameters.store_transfer, 'lines note');
   assert.ok('store_list_stock' in readParameters && 'combined_balance' in readParameters);
 });
+
+import {stockLevel, lowStockCount, sortLowFirst, parseMinQty, soldBoard} from './storeApi.js';
+test('stockLevel: no threshold = ok; out / low / ok by min_qty', () => {
+  assert.equal(stockLevel({qty: 0, min_qty: null}), 'ok');
+  assert.equal(stockLevel({qty: 0, min_qty: 3}), 'out');
+  assert.equal(stockLevel({qty: 3, min_qty: 3}), 'low');
+  assert.equal(stockLevel({qty: 4, min_qty: 3}), 'ok');
+  assert.equal(stockLevel({qty: 1, min_qty: 0}), 'ok');
+  assert.equal(lowStockCount([{qty: 0, min_qty: 2}, {qty: 1, min_qty: 2}, {qty: 9, min_qty: 2}, {qty: 1}]), 2);
+});
+test('sortLowFirst puts out then low first, keeps order of the rest', () => {
+  const rows = [{n: 'a', qty: 9, min_qty: 2}, {n: 'b', qty: 1, min_qty: 2}, {n: 'c', qty: 0, min_qty: 2}, {n: 'd', qty: 5}];
+  assert.deepEqual(sortLowFirst(rows).map(r => r.n), ['c', 'b', 'a', 'd']);
+});
+test('parseMinQty: blank clears, number ok, junk rejected', () => {
+  assert.equal(parseMinQty(''), null);
+  assert.equal(parseMinQty(' 5 '), 5);
+  assert.equal(parseMinQty('0'), 0);
+  assert.throws(() => parseMinQty('-1'));
+  assert.throws(() => parseMinQty('abc'));
+});
+test('soldBoard = sold − cancelled (>0) plus main-stock sales, biggest first', () => {
+  const out = soldBoard([{item_kind: 'model', item_id: 'm1', name: 'A', sold: 5, sale_cancelled: 2}, {item_kind: 'model', item_id: 'm2', name: 'B', sold: 1, sale_cancelled: 1}], [{material_id: 'x', name: 'X', unit: 'ชิ้น', qty: 7}]);
+  assert.deepEqual(out.map(r => [r.name, r.qty]), [['X', 7], ['A', 3]]);
+});

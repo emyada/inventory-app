@@ -182,13 +182,13 @@ function stockSheet(stock, report) {
   return {name: 'ลำดับนับสต็อก', widths: [44, 8, 14, 14, 12, 20], rows};
 }
 function storeSheet(items) {
-  const rows = [['รายการ', 'ประเภท', 'หน่วย', 'ต้นงวด', 'รับจากคลังหลัก', 'ขาย', 'ยกเลิกขาย', 'ปรับเพิ่ม', 'ปรับลด', 'คงเหลือ'].map(H)];
+  const rows = [['รายการ', 'ประเภท', 'หน่วย', 'ต้นงวด', 'รับจากคลังหลัก', 'โอนคืนคลังหลัก', 'ขาย', 'ยกเลิกขาย', 'ปรับเพิ่ม', 'ปรับลด', 'คงเหลือ'].map(H)];
   items.forEach((r, i) => {
     const n = k => Number(r[k] ?? 0), row = i + 2;
-    rows.push([T(r.name), T(r.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'), T(r.unit), N(n('opening')), N(n('transfer_in')), N(n('sold')), N(n('sale_cancelled')), N(n('adjust_in')), N(n('adjust_out')),
-      F(`D${row}+E${row}-F${row}+G${row}+H${row}-I${row}`, round(n('opening') + n('transfer_in') - n('sold') + n('sale_cancelled') + n('adjust_in') - n('adjust_out')))]);
+    rows.push([T(r.name), T(r.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'), T(r.unit), N(n('opening')), N(n('transfer_in')), N(n('transfer_out')), N(n('sold')), N(n('sale_cancelled')), N(n('adjust_in')), N(n('adjust_out')),
+      F(`D${row}+E${row}-F${row}-G${row}+H${row}+I${row}-J${row}`, round(n('opening') + n('transfer_in') - n('transfer_out') - n('sold') + n('sale_cancelled') + n('adjust_in') - n('adjust_out')))]);
   });
-  return {name: 'หน้าร้าน', widths: [36, 14, 8, 10, 16, 10, 12, 10, 10, 12], rows};
+  return {name: 'หน้าร้าน', widths: [36, 14, 8, 10, 16, 14, 10, 12, 10, 10, 12], rows};
 }
 function mainSalesSheet(items) {
   const rows = [['วัตถุดิบ', 'หน่วย', 'ขายจากคลังหน้าร้าน (อื่นๆ)'].map(H)];

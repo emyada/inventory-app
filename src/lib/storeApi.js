@@ -65,6 +65,7 @@ export function storeError(error) {
   if (message === 'SALE_TAG_REQUIRED') return `ต้องกรอกรหัสแท็กการขาย (อย่างน้อย ${SALE_TAG_MIN} ตัวอักษร)`;
   if (/^MAIN_STOCK_SHORT/.test(message)) return `ของในคลังหลักไม่พอ: ${message.replace(/^MAIN_STOCK_SHORT:\s*/, '')} (ยังไม่ตัดอะไรเลย)`;
   if (message === 'SALE_TAG_ALREADY_SET') return 'ใบนี้มีแท็กแล้ว';
+  if (/Finite positive quantity/i.test(message)) return 'จุดเตือนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';
   if (/Insufficient store stock/i.test(message)) return `ของหน้าร้านไม่พอ (${message.replace(/^.*?:\s*/, '')})`;
   if (/Insufficient stock/i.test(message)) return `วัตถุดิบในคลังหลักไม่พอสำหรับโอนครั้งนี้ (${message.replace(/^.*?:\s*/, '')})`;
   if (/Model has no BOM/i.test(message)) return 'รุ่นนี้ยังไม่มี BOM จึงโอนเป็นชุดไม่ได้';
@@ -78,3 +79,39 @@ export function storeError(error) {
 
 export const storeSaleStatusLabel = (status, pending = false) => (status === 'cancelled' ? 'ยกเลิก' : pending ? 'รอแท็ก' : 'ขายแล้ว');
 export const linesSummary = lines => (lines || []).map(l => `${l.name} ×${l.qty}${l.source === 'main' ? ' (คลังหลัก)' : ''}`).join(', ');
+
+// ---- low-stock warning (per-item threshold, set by admin) ----
+// min_qty null = no warning. qty<=0 → 'out' (only if a threshold is set), qty<=min → 'low'.
+export function stockLevel(row) {
+  const min = row?.min_qty;
+  if (min === null || min === undefined || min === '') return 'ok';
+  const qty = Number(row.qty), limit = Number(min);
+  if (!Number.isFinite(limit)) return 'ok';
+  if (qty <= 0) return 'out';
+  return qty <= limit ? 'low' : 'ok';
+}
+export const lowStockCount = rows => (rows || []).filter(r => stockLevel(r) !== 'ok').length;
+const LEVEL_ORDER = { out: 0, low: 1, ok: 2 };
+// warning items first (out, then low), the rest keep their given order
+export const sortLowFirst = rows => (rows || []).map((r, i) => ({ r, i })).sort((a, b) => LEVEL_ORDER[stockLevel(a.r)] - LEVEL_ORDER[stockLevel(b.r)] || a.i - b.i).map(x => x.r);
+// "" → clear threshold (null); otherwise number >= 0
+export function parseMinQty(value) {
+  const text = String(value ?? '').trim();
+  if (text === '') return null;
+  if (!/^\d+(\.\d+)?$/.test(text)) throw new Error('จุดเตือนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+  return Number(text);
+}
+
+// ---- sold board: items sold in a month (store report + main-stock sales) ----
+export function soldBoard(storeItems, mainItems) {
+  const out = [];
+  for (const r of storeItems || []) {
+    const qty = Number(r.sold || 0) - Number(r.sale_cancelled || 0);
+    if (qty > 0) out.push({ key: `${r.item_kind}:${r.item_id || r.name}`, name: r.name, unit: r.unit, kind: r.item_kind, qty });
+  }
+  for (const r of mainItems || []) {
+    const qty = Number(r.qty || 0);
+    if (qty > 0) out.push({ key: `main:${r.material_id || r.name}`, name: r.name, unit: r.unit, kind: 'main', qty });
+  }
+  return out.sort((a, b) => b.qty - a.qty || String(a.name).localeCompare(String(b.name), 'th'));
+}
