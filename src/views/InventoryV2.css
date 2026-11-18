@@ -476,3 +476,8 @@
 .req-row > details[open] > summary { border-bottom: 1px solid var(--inv-line); }
 .req-row > details > :not(summary) { margin-left: 12px; margin-right: 12px; }
 .req-row > details > :last-child { margin-bottom: 12px; }
+
+/* แผงจัดการบัญชี: ปุ่มทดสอบระบบซ่อนไว้ด้านล่าง */
+.inv-adv { margin-top: 12px; font-size: 13px; color: var(--inv-muted); }
+.inv-adv > summary { cursor: pointer; }
+.inv-adv > p { margin: 6px 0 0; }
