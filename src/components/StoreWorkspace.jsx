@@ -26,7 +26,7 @@ export function StoreWorkspace({api, role, userId, revision, onChanged, actionBu
       รอกรอกแท็ก {pend.total} ใบ{pend.overdue > 0 && ` — ค้างเกิน ${PENDING_TAG_WARN_DAYS} วัน ${pend.overdue} ใบ`}
       {mode !== 'sales' && <button type="button" onClick={() => setMode('sales')}>ไปกรอกแท็ก</button>}
     </div>}
-    {mode === 'sell' && <StoreSell api={api} role={role} source="store" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    {mode === 'sell' && <StoreSell api={api} role={role} userId={userId} source="store" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'other' && role !== 'store' && <StoreSell api={api} role={role} source="main" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={dir => setTransfer(dir || 'to_store')} onHistory={() => setHistory(true)}/>}
     {mode === 'sales' && <StoreSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}

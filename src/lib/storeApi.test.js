@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, parseQty, saleTagKey, storeError, validateSaleTag} from './storeApi.js';
+import {latestSales, sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, parseQty, saleTagKey, storeError, validateSaleTag} from './storeApi.js';
 import {workspaceTabs} from './inventoryReports.js';
 import {mutationParameters, readParameters} from './inventoryApi.js';
 import {storeModeKeys} from './storeApi.js';
@@ -96,4 +96,11 @@ test('sell order: ordered items first, new items last by name, can move, payload
 test('store staff only sees sell, stock, sales (hidden: other, report)', () => {
   assert.deepEqual(storeModeKeys('store'), ['sell', 'stock', 'sales']);
   assert.deepEqual(storeModeKeys('admin'), ['stock', 'sales', 'sell', 'other', 'report']);
+});
+
+test('latestSales: newest 3 first, tolerates empty', () => {
+  const rows = ['2026-11-19T09:11:00Z', '2026-11-19T09:29:00Z', '2026-11-19T09:28:00Z', '2026-11-18T01:00:00Z'].map((created_at, i) => ({sale_id: i, created_at}));
+  assert.deepEqual(latestSales(rows).map(r => r.sale_id), [1, 2, 0]);
+  assert.deepEqual(latestSales(rows, 1).map(r => r.sale_id), [1]);
+  assert.deepEqual(latestSales(null), []);
 });
