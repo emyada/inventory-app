@@ -1,12 +1,42 @@
-import React, {useCallback, useMemo, useState} from 'react';
-import {sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag} from '../../lib/storeApi.js';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {localDay} from '../../lib/inventoryReports.js';
+import {latestSales, sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag} from '../../lib/storeApi.js';
 import {ModalHeader} from '../InventoryUI.jsx';
+import {SaleCard} from './StoreSales.jsx';
 import {fmtTime, fmtQty, useStoreRead, ReadNote, OpResult, useOperation} from './shared.jsx';
 
 /* ---------------- Sell (storefront stock, or "อื่นๆ" = main warehouse stock) ---------------- */
 const normalizeStoreItem = i => ({key: `${i.item_kind}:${i.item_id}`, kind: i.item_kind, id: i.item_id, name: i.name, unit: i.unit, qty: Number(i.qty), category: i.category, source: 'store'});
 const normalizeMainItem = i => ({key: `material:${i.material_id}`, kind: 'material', id: i.material_id, name: i.name, unit: i.unit, qty: i.qty == null ? null : Number(i.qty), inStock: Boolean(i.in_stock), pinned: Boolean(i.pinned), source: 'main'});
 
+
+/* ---------------- Desktop only: the 3 latest sales next to the cart ---------------- */
+const DESKTOP_QUERY = '(min-width: 900px)';
+function useIsDesktop() {
+  const canMatch = typeof window !== 'undefined' && typeof window.matchMedia === 'function';
+  const [desktop, setDesktop] = useState(() => canMatch && window.matchMedia(DESKTOP_QUERY).matches);
+  useEffect(() => {
+    if (!canMatch) return undefined;
+    const media = window.matchMedia(DESKTOP_QUERY);
+    const on = () => setDesktop(media.matches);
+    media.addEventListener('change', on);
+    return () => media.removeEventListener('change', on);
+  }, [canMatch]);
+  return desktop;
+}
+function RecentSales({api, role, userId, revision, onChanged, actionBusy}) {
+  const from = localDay(new Date(Date.now() - 7 * 86400000));
+  const to = localDay(new Date());
+  const state = useStoreRead(() => api.store_list_sales({date_from: from, date_to: to, timezone: 'Asia/Bangkok', limit: 200}), revision, [from, to]);
+  const [cancelling, setCancelling] = useState(null);
+  const rows = useMemo(() => latestSales(state.data, 3).map(s => ({...s, created_at_label: fmtTime(s.created_at)})), [state.data]);
+  return <section className="store-recent" aria-label="ขายล่าสุด 3 รายการ">
+    <h3>ขายล่าสุด</h3>
+    <ReadNote state={state}/>
+    {!state.busy && !state.error && !rows.length && <p className="inv-empty">ยังไม่มีรายการขาย</p>}
+    {rows.map(s => <SaleCard key={s.sale_id} api={api} s={s} role={role} userId={userId} actionBusy={actionBusy} cancelling={cancelling} setCancelling={setCancelling} onChanged={onChanged}/>)}
+  </section>;
+}
 
 /* ---------------- Admin: arrange the sell-page order ---------------- */
 function OrderEditor({api, items, order, onClose, onSaved}) {
@@ -31,8 +61,9 @@ function OrderEditor({api, items, order, onClose, onSaved}) {
   </section>;
 }
 
-export function StoreSell({api, role, source = 'store', revision, onChanged, actionBusy}) {
+export function StoreSell({api, role, userId, source = 'store', revision, onChanged, actionBusy}) {
   const isMain = source === 'main';
+  const desktop = useIsDesktop();
   const stock = useStoreRead(() => (isMain ? api.store_list_main_items() : api.store_list_stock()), revision, [source]);
   const orderRead = useStoreRead(() => (isMain ? Promise.resolve([]) : api.store_list_order()), revision, [source]);
   const [editingOrder, setEditingOrder] = useState(false);
@@ -94,6 +125,7 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
   const togglePin = item => pinOp.run(() => api.store_set_pin({material_id: item.id, pinned: !item.pinned}, {intentKey: `pin:${item.id}:${!item.pinned}`}));
 
   return <section className="store-sell">
+    <div className="store-sell-side">
     <form className="store-sell-cart inv-card" onSubmit={submit}>
       <h3>ออเดอร์นี้{isMain ? ' (จากคลังหลัก)' : ''} <span className="inv-muted">· {cart.length} รายการ</span>{cart.length > 0 && <button type="button" className="store-clear" disabled={disabled} onClick={() => setCart([])}>ล้าง</button>}</h3>
       {!cart.length && <p className="inv-muted store-cart-empty">ยังไม่ได้เลือกสินค้า</p>}
@@ -116,6 +148,8 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
       {message && <p role="status" className="inv-success">{message}</p>}
       {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
     </form>
+    {desktop && !isMain && <RecentSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    </div>
     <div className="store-sell-pick">
       {isMain && quick.length > 0 && <div className="store-quick" aria-label="ของขายบ่อย">
         <span className="store-quick-label" aria-hidden="true">★</span>

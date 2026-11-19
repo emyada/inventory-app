@@ -47,7 +47,7 @@ function SetTagForm({api, sale, onDone}) {
   </form>;
 }
 
-function SaleCard({api, s, role, userId, actionBusy, cancelling, setCancelling, onChanged}) {
+export function SaleCard({api, s, role, userId, actionBusy, cancelling, setCancelling, onChanged}) {
   const late = s.pending ? daysWaiting(s.created_at) : 0;
   return <article className="inv-card" key={s.sale_id}>
     <div className="inv-toolbar"><h3>{s.tag || 'ยังไม่มีแท็ก'}</h3>

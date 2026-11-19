@@ -145,3 +145,6 @@ export function orderPayload(visible, order) {
 
 // which store sub-pages each role gets, in display order (store staff: no "อื่นๆ" and no "รายงาน")
 export const storeModeKeys = role => role === 'store' ? ['sell', 'stock', 'sales'] : ['stock', 'sales', 'sell', 'other', 'report'];
+
+// newest first, first n (for the "ขายล่าสุด" panel on the sell page)
+export const latestSales = (sales, n = 3) => [...(sales || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, n);

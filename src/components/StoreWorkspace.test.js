@@ -17,6 +17,7 @@ test('StoreWorkspace renders tabs per role and re-exports its parts',async()=>{
   assert.ok(admin.includes('อื่นๆ')&&admin.includes('รายงาน'));
   assert.ok(store.includes('ขาย')&&store.includes('ยอดหน้าร้าน')&&store.includes('รายการขาย'));
   assert.ok(!store.includes('อื่นๆ')&&!store.includes('>รายงาน<'));
+  assert.ok(store.includes('store-sell-side')&&!store.includes('store-recent'),'phone/SSR: wrapper only, no recent-sales panel');
   const order=['>ขาย<','>ยอดหน้าร้าน<','>รายการขาย<'].map(t=>store.indexOf(t));
   assert.ok(order.every(i=>i>=0)&&order[0]<order[1]&&order[1]<order[2],'store tab order: ขาย, ยอดหน้าร้าน, รายการขาย');
  }finally{await server.close();}
