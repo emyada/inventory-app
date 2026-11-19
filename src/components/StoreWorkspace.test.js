@@ -14,6 +14,10 @@ test('StoreWorkspace renders tabs per role and re-exports its parts',async()=>{
   const admin=renderToStaticMarkup(React.createElement(mod.StoreWorkspace,{api,role:'admin',userId:'u',revision:0,onChanged(){},actionBusy:false}));
   assert.ok(admin.includes('ยอดหน้าร้าน')&&admin.includes('รายการขาย'));
   const store=renderToStaticMarkup(React.createElement(mod.StoreWorkspace,{api,role:'store',userId:'u',revision:0,onChanged(){},actionBusy:false}));
-  assert.ok(store.includes('ขาย')&&store.includes('อื่นๆ'));
+  assert.ok(admin.includes('อื่นๆ')&&admin.includes('รายงาน'));
+  assert.ok(store.includes('ขาย')&&store.includes('ยอดหน้าร้าน')&&store.includes('รายการขาย'));
+  assert.ok(!store.includes('อื่นๆ')&&!store.includes('>รายงาน<'));
+  const order=['>ขาย<','>ยอดหน้าร้าน<','>รายการขาย<'].map(t=>store.indexOf(t));
+  assert.ok(order.every(i=>i>=0)&&order[0]<order[1]&&order[1]<order[2],'store tab order: ขาย, ยอดหน้าร้าน, รายการขาย');
  }finally{await server.close();}
 });

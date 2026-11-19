@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from 'react';
 import {localDay} from '../lib/inventoryReports.js';
-import {pendingSummary, PENDING_TAG_WARN_DAYS} from '../lib/storeApi.js';
+import {pendingSummary, PENDING_TAG_WARN_DAYS, storeModeKeys} from '../lib/storeApi.js';
 import {StoreSell} from './store/StoreSell.jsx';
 import {StoreStock} from './store/StoreStock.jsx';
 import {StoreTransferForm, StoreTransferHistory} from './store/StoreTransfer.jsx';
@@ -11,8 +11,9 @@ import {useStoreRead} from './store/shared.jsx';
 export {StoreSell, StoreStock, StoreTransferForm, StoreTransferHistory, StoreSales, StoreReports};
 
 /* ---------------- Workspace shell ---------------- */
+const STORE_MODE_LABELS = {sell: 'ขาย', other: 'อื่นๆ', stock: 'ยอดหน้าร้าน', sales: 'รายการขาย', report: 'รายงาน'};
 export function StoreWorkspace({api, role, userId, revision, onChanged, actionBusy}) {
-  const modes = role === 'store' ? [['sell', 'ขาย'], ['other', 'อื่นๆ'], ['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['report', 'รายงาน']] : [['stock', 'ยอดหน้าร้าน'], ['sales', 'รายการขาย'], ['sell', 'ขาย'], ['other', 'อื่นๆ'], ['report', 'รายงาน']];
+  const modes = storeModeKeys(role).map(key => [key, STORE_MODE_LABELS[key]]);
   const [mode, setMode] = useState(modes[0][0]);
   const [transfer, setTransfer] = useState(false); // false | 'to_store' | 'to_main'
   const [history, setHistory] = useState(false);
@@ -26,10 +27,10 @@ export function StoreWorkspace({api, role, userId, revision, onChanged, actionBu
       {mode !== 'sales' && <button type="button" onClick={() => setMode('sales')}>ไปกรอกแท็ก</button>}
     </div>}
     {mode === 'sell' && <StoreSell api={api} role={role} source="store" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
-    {mode === 'other' && <StoreSell api={api} role={role} source="main" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
+    {mode === 'other' && role !== 'store' && <StoreSell api={api} role={role} source="main" revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
     {mode === 'stock' && <StoreStock api={api} role={role} revision={revision} onChanged={onChanged} actionBusy={actionBusy} onTransfer={dir => setTransfer(dir || 'to_store')} onHistory={() => setHistory(true)}/>}
     {mode === 'sales' && <StoreSales api={api} role={role} userId={userId} revision={revision} onChanged={onChanged} actionBusy={actionBusy}/>}
-    {mode === 'report' && <StoreReports api={api} revision={revision}/>}
+    {mode === 'report' && role !== 'store' && <StoreReports api={api} revision={revision}/>}
     {transfer && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="โอนของระหว่างคลังหลักกับหน้าร้าน">
       <StoreTransferForm api={api} initialDir={transfer} onClose={() => setTransfer(false)} onSuccess={onChanged}/></div></div>}
     {history && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="ประวัติการโอน">

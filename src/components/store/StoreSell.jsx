@@ -1,14 +1,41 @@
 import React, {useCallback, useMemo, useState} from 'react';
-import {addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag} from '../../lib/storeApi.js';
+import {sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag} from '../../lib/storeApi.js';
+import {ModalHeader} from '../InventoryUI.jsx';
 import {fmtTime, fmtQty, useStoreRead, ReadNote, OpResult, useOperation} from './shared.jsx';
 
 /* ---------------- Sell (storefront stock, or "อื่นๆ" = main warehouse stock) ---------------- */
 const normalizeStoreItem = i => ({key: `${i.item_kind}:${i.item_id}`, kind: i.item_kind, id: i.item_id, name: i.name, unit: i.unit, qty: Number(i.qty), category: i.category, source: 'store'});
 const normalizeMainItem = i => ({key: `material:${i.material_id}`, kind: 'material', id: i.material_id, name: i.name, unit: i.unit, qty: i.qty == null ? null : Number(i.qty), inStock: Boolean(i.in_stock), pinned: Boolean(i.pinned), source: 'main'});
 
+
+/* ---------------- Admin: arrange the sell-page order ---------------- */
+function OrderEditor({api, items, order, onClose, onSaved}) {
+  const [list, setList] = useState(items);
+  const op = useOperation();
+  const disabled = op.busy;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset is stable
+  const done = useCallback(() => { op.reset(); onSaved(); onClose(); }, [onSaved, onClose]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- stable setters
+  const failed = useCallback(error => { op.setError(storeError(error)); op.reset(); }, []);
+  return <section className="inv-form">
+    <ModalHeader title="จัดลำดับสินค้าหน้าขาย" onClose={onClose} busy={op.busy}/>
+    <p className="inv-muted">กด ▲ ▼ เพื่อเลื่อนขึ้น/ลง แล้วกดบันทึก ทุกคนจะเห็นลำดับใหม่ สินค้าใหม่ที่ยังไม่ได้จัดจะอยู่ท้ายสุดเรียงตามชื่อ</p>
+    <ol className="store-order-list">{list.map((i, idx) => <li key={i.key}>
+      <span className="store-order-no">{idx + 1}</span><span className="store-order-name">{i.name}</span>
+      <button type="button" className="inv-icon" aria-label={`เลื่อน ${i.name} ขึ้น`} disabled={disabled || idx === 0} onClick={() => setList(moveItem(list, idx, -1))}>▲</button>
+      <button type="button" className="inv-icon" aria-label={`เลื่อน ${i.name} ลง`} disabled={disabled || idx === list.length - 1} onClick={() => setList(moveItem(list, idx, 1))}>▼</button>
+    </li>)}</ol>
+    {op.error && <p role="alert">{op.error}</p>}
+    <button type="button" className="inv-primary" disabled={disabled} onClick={() => op.run(() => api.store_set_order({items: orderPayload(list, order)}))}>บันทึกลำดับ</button>
+    {op.operation && <OpResult operation={op.operation} onSuccess={done} onFailure={failed}/>}
+  </section>;
+}
+
 export function StoreSell({api, role, source = 'store', revision, onChanged, actionBusy}) {
   const isMain = source === 'main';
   const stock = useStoreRead(() => (isMain ? api.store_list_main_items() : api.store_list_stock()), revision, [source]);
+  const orderRead = useStoreRead(() => (isMain ? Promise.resolve([]) : api.store_list_order()), revision, [source]);
+  const [editingOrder, setEditingOrder] = useState(false);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [tag, setTag] = useState('');
@@ -18,7 +45,10 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
   const [duplicate, setDuplicate] = useState(null);
   const op = useOperation();
   const pinOp = useOperation();
-  const all = useMemo(() => (stock.data || []).map(isMain ? normalizeMainItem : normalizeStoreItem), [stock.data, isMain]);
+  const all = useMemo(() => {
+    const rows = (stock.data || []).map(isMain ? normalizeMainItem : normalizeStoreItem);
+    return isMain ? rows : sortByStoreOrder(rows, orderRead.data);
+  }, [stock.data, orderRead.data, isMain]);
   const items = useMemo(() => all.filter(i => i.name.toLowerCase().includes(search.toLowerCase())), [all, search]);
   const quick = useMemo(() => all.filter(i => i.pinned && i.inStock), [all]);
   const inCart = item => cart.find(r => r.kind === item.kind && r.id === item.id && r.source === source)?.qty || 0;
@@ -91,6 +121,7 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
         <span className="store-quick-label" aria-hidden="true">★</span>
         {quick.map(i => <button type="button" key={i.key} disabled={disabled} onClick={() => add(i, '1')}>+ {i.name}</button>)}
       </div>}
+      {!isMain && role === 'admin' && all.length > 1 && <button type="button" className="store-order-btn" disabled={disabled} onClick={() => setEditingOrder(true)}>จัดลำดับสินค้า</button>}
       <input className="store-search" aria-label="ค้นหาสินค้า" placeholder={isMain ? 'ค้นหาวัตถุดิบในคลังหลัก…' : 'ค้นหาสินค้า…'} value={search} onChange={e => setSearch(e.target.value)}/>
       <ReadNote state={stock}/>
       {pinOp.error && <p role="alert">{pinOp.error}</p>}
@@ -110,6 +141,8 @@ export function StoreSell({api, role, source = 'store', revision, onChanged, act
         </div>
       </article>)}</div>
     </div>
+    {editingOrder && <div className="inv-modal-backdrop"><div className="inv-modal" role="dialog" aria-modal="true" aria-label="จัดลำดับสินค้าหน้าขาย">
+      <OrderEditor api={api} items={all} order={orderRead.data} onClose={() => setEditingOrder(false)} onSaved={onChanged}/></div></div>}
   </section>;
 }
 
