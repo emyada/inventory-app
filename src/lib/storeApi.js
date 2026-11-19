@@ -65,6 +65,7 @@ export function storeError(error) {
   if (message === 'SALE_TAG_REQUIRED') return `ต้องกรอกรหัสแท็กการขาย (อย่างน้อย ${SALE_TAG_MIN} ตัวอักษร)`;
   if (/^MAIN_STOCK_SHORT/.test(message)) return `ของในคลังหลักไม่พอ: ${message.replace(/^MAIN_STOCK_SHORT:\s*/, '')} (ยังไม่ตัดอะไรเลย)`;
   if (message === 'FEEDBACK_MESSAGE_REQUIRED') return 'พิมพ์ข้อความอย่างน้อย 3 ตัวอักษร';
+  if (message === 'ORDER_INVALID') return 'ลำดับสินค้าไม่ถูกต้อง ลองรีเฟรชหน้าแล้วจัดใหม่';
   if (message === 'FEEDBACK_TOO_MANY') return 'ส่งบ่อยเกินไป รออีกสักครู่แล้วลองใหม่';
   if (message === 'SALE_REASON_REQUIRED') return 'ต้องใส่เหตุผลการขายอื่นๆ ก่อนบันทึก';
   if (message === 'SALE_TAG_ALREADY_SET') return 'ใบนี้มีแท็กแล้ว';
@@ -118,3 +119,29 @@ export function soldBoard(storeItems, mainItems) {
   }
   return out.sort((a, b) => b.qty - a.qty || String(a.name).localeCompare(String(b.name), 'th'));
 }
+
+// ---- sell-page order (admin sets it; everyone sees it) ----
+const orderKey = (kind, id) => `${kind}:${id}`;
+// items: [{kind,id,name}] · order: [{item_kind,item_id,position}] → ordered items first, the rest by name
+export function sortByStoreOrder(items, order) {
+  const pos = new Map((order || []).map(o => [orderKey(o.item_kind, o.item_id), Number(o.position)]));
+  return (items || []).map((it, i) => ({ it, i, p: pos.has(orderKey(it.kind, it.id)) ? pos.get(orderKey(it.kind, it.id)) : Infinity }))
+    .sort((a, b) => a.p === b.p ? String(a.it.name).localeCompare(String(b.it.name), 'th') || a.i - b.i : a.p - b.p)
+    .map(x => x.it);
+}
+export function moveItem(list, index, delta) {
+  const j = index + delta;
+  if (index < 0 || index >= list.length || j < 0 || j >= list.length) return list;
+  const next = [...list];
+  [next[index], next[j]] = [next[j], next[index]];
+  return next;
+}
+// visible items in the new order first, then already-ordered items that are not on screen (so they keep a place)
+export function orderPayload(visible, order) {
+  const seen = new Set(visible.map(v => orderKey(v.kind, v.id)));
+  const rest = [...(order || [])].sort((a, b) => a.position - b.position).filter(o => !seen.has(orderKey(o.item_kind, o.item_id)));
+  return [...visible.map(v => ({ kind: v.kind, id: v.id })), ...rest.map(o => ({ kind: o.item_kind, id: o.item_id }))];
+}
+
+// which store sub-pages each role gets, in display order (store staff: no "อื่นๆ" and no "รายงาน")
+export const storeModeKeys = role => role === 'store' ? ['sell', 'stock', 'sales'] : ['stock', 'sales', 'sell', 'other', 'report'];

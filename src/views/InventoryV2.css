@@ -533,3 +533,9 @@
 .feedback-msg{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
 .feedback-status{font-size:12px;padding:1px 8px;border-radius:999px;background:#F1EEE6}
 .feedback-status.new{background:#fff3cd;color:#7a5600}
+.inventory-v2 .store-order-btn{align-self:flex-start;min-height:36px;margin:0 0 6px;}
+.inventory-v2 .store-order-list{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:6px;}
+.inventory-v2 .store-order-list li{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line,#ddd);border-radius:10px;}
+.inventory-v2 .store-order-no{flex:none;width:24px;text-align:center;color:#6b6b6b;font-size:13px;}
+.inventory-v2 .store-order-name{flex:1;min-width:0;overflow-wrap:anywhere;}
+.inventory-v2 .store-order-list .inv-icon{flex:none;min-width:40px;min-height:40px;padding:0;}

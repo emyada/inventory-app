@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {addToCart, cartLines, parseDuplicateSale, parseQty, saleTagKey, storeError, validateSaleTag} from './storeApi.js';
+import {sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, parseQty, saleTagKey, storeError, validateSaleTag} from './storeApi.js';
 import {workspaceTabs} from './inventoryReports.js';
 import {mutationParameters, readParameters} from './inventoryApi.js';
+import {storeModeKeys} from './storeApi.js';
 
 test('sale tag normalisation ignores case, spaces and separators like the database', () => {
   assert.equal(saleTagKey(' shp-1001 '), 'SHP1001');
@@ -75,4 +76,24 @@ test('soldBoard = sold − cancelled (>0) plus main-stock sales, biggest first',
 
 test('storeError maps SALE_REASON_REQUIRED to Thai', () => {
   assert.match(storeError(new Error('SALE_REASON_REQUIRED')), /เหตุผล/);
+});
+
+test('sell order: ordered items first, new items last by name, can move, payload keeps off-screen entries', () => {
+  const items = [{kind: 'model', id: 'c', name: 'C'}, {kind: 'model', id: 'a', name: 'A'}, {kind: 'material', id: 'z', name: 'Zed'}, {kind: 'model', id: 'n', name: 'New'}];
+  const order = [{item_kind: 'material', item_id: 'z', position: 0}, {item_kind: 'model', item_id: 'a', position: 1}, {item_kind: 'model', item_id: 'c', position: 2}, {item_kind: 'model', item_id: 'gone', position: 3}];
+  const sorted = sortByStoreOrder(items, order);
+  assert.deepEqual(sorted.map(i => i.id), ['z', 'a', 'c', 'n']);
+  assert.deepEqual(sortByStoreOrder(items, []).map(i => i.id), ['a', 'c', 'n', 'z']);
+  assert.deepEqual(moveItem(sorted, 1, -1).map(i => i.id), ['a', 'z', 'c', 'n']);
+  assert.equal(moveItem(sorted, 0, -1), sorted);
+  assert.equal(moveItem(sorted, 3, 1), sorted);
+  const payload = orderPayload(moveItem(sorted, 3, -1), order);
+  assert.deepEqual(payload.map(p => p.id), ['z', 'a', 'n', 'c', 'gone']);
+  assert.equal(storeError(new Error('ORDER_INVALID')).includes('ลำดับ'), true);
+  assert.equal(Object.hasOwn(mutationParameters, 'store_set_order'), true);
+  assert.equal(Object.hasOwn(readParameters, 'store_list_order'), true);
+});
+test('store staff only sees sell, stock, sales (hidden: other, report)', () => {
+  assert.deepEqual(storeModeKeys('store'), ['sell', 'stock', 'sales']);
+  assert.deepEqual(storeModeKeys('admin'), ['stock', 'sales', 'sell', 'other', 'report']);
 });
