@@ -211,3 +211,22 @@ export function tagChannelState(tag, channels, other) {
 // can the sale be saved? Without a loaded channel list the database still enforces the lock.
 export const tagChannelOk = (tag, channels, other) => !String(tag ?? '').trim() || !(channels || []).length || tagChannelState(tag, channels, other).state !== 'mismatch';
 export const channelOtherFlag = (tag, channels, other) => (other && !matchChannel(tag, channels) ? {other: true} : {});
+
+// ---- sales page: board ⇄ list ----
+// Does the sale contain the board item (key from soldBoard: "model:<id>", "material:<id>" or "main:<id>")?
+export function saleHasItem(sale, key) {
+  if (!key) return true;
+  const at = String(key).indexOf(':');
+  const kind = String(key).slice(0, at), id = String(key).slice(at + 1);
+  return (sale?.lines || []).some(l => (kind === 'main' ? l.source === 'main' && String(l.item_id) === id : l.source !== 'main' && l.item_kind === kind && String(l.item_id) === id));
+}
+// date range the sales list shows for the board period: a picked day, else the month (up to today for the current month)
+export function salesPeriodRange({year, month}, day, today) {
+  if (day) return {from: day, to: day};
+  const mm = String(month).padStart(2, '0');
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const end = `${year}-${mm}-${String(last).padStart(2, '0')}`;
+  const from = `${year}-${mm}-01`;
+  const to = end < today ? end : today;
+  return {from, to: to < from ? from : to};
+}

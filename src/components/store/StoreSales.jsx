@@ -2,7 +2,7 @@ import React, {useCallback, useMemo, useState} from 'react';
 import {localDay, reportCSV} from '../../lib/inventoryReports.js';
 import {monthRange, currentMonth, shiftMonth, monthLabel} from '../../lib/monthlyReport.js';
 import {downloadCSV} from '../../utils/csv.js';
-import {soldBoard, linesSummary, parseDuplicateSale, storeError, storeSaleStatusLabel, daysWaiting, PENDING_TAG_WARN_DAYS, validateSaleTag, tagChannelOk, channelOtherFlag} from '../../lib/storeApi.js';
+import {soldBoard, linesSummary, parseDuplicateSale, storeError, storeSaleStatusLabel, daysWaiting, PENDING_TAG_WARN_DAYS, validateSaleTag, tagChannelOk, channelOtherFlag, saleHasItem, salesPeriodRange} from '../../lib/storeApi.js';
 import {fmtTime, fmtQty, useStoreRead, ReadNote, OpResult, useOperation, ChannelBadge, TagField} from './shared.jsx';
 import {ChannelManager} from './ChannelManager.jsx';
 
@@ -71,27 +71,40 @@ export function SaleCard({api, s, role, userId, actionBusy, cancelling, setCance
   </article>;
 }
 
-function StoreSoldBoard({api, revision}) {
-  const [month, setMonth] = useState(currentMonth());
-  const {from, to} = monthRange(month.year, month.month);
+function StoreSoldBoard({api, revision, month, day, onMonth, onDay, selected, onSelect}) {
+  const {from, to} = day ? {from: day, to: day} : monthRange(month.year, month.month);
   const state = useStoreRead(() => api.store_report({date_from: from, date_to: to, timezone: 'Asia/Bangkok'}), revision, [from, to]);
   const items = useMemo(() => soldBoard(state.data?.items, state.data?.main_sales), [state.data]);
   const channelTotals = useMemo(() => (state.data?.channels || []).filter(c => Number(c.orders) > 0), [state.data]);
   return <div className="store-sold-board">
     <div className="store-sold-head"><h3>ขายอะไรไปบ้าง</h3>
-      <div className="mr-month"><button type="button" aria-label="เดือนก่อน" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button><span>{monthLabel(month)}</span><button type="button" aria-label="เดือนถัดไป" onClick={() => setMonth(shiftMonth(month, 1))}>›</button></div></div>
+      <div className="store-sold-period">
+        <div className="mr-month"><button type="button" aria-label="เดือนก่อน" onClick={() => onMonth(shiftMonth(month, -1))}>‹</button><span>{monthLabel(month)}</span><button type="button" aria-label="เดือนถัดไป" onClick={() => onMonth(shiftMonth(month, 1))}>›</button></div>
+        <label className="store-sold-day">ดูเฉพาะวัน<input type="date" value={day} max={localDay(new Date())} onChange={e => onDay(e.target.value)}/></label>
+        {day && <button type="button" className="store-sold-month-btn" onClick={() => onDay('')}>ทั้งเดือน</button>}
+      </div></div>
     <ReadNote state={state}/>
-    {!state.busy && !state.error && !items.length && <p className="inv-empty">เดือนนี้ยังไม่มีการขาย</p>}
+    {!state.busy && !state.error && !items.length && <p className="inv-empty">{day ? 'วันนี้ยังไม่มีการขาย' : 'เดือนนี้ยังไม่มีการขาย'}</p>}
     {channelTotals.length > 0 && <div className="store-sold-channels" aria-label="ยอดแยกตามช่องทาง"><span className="inv-muted">แยกตามช่องทาง</span>
       {channelTotals.map(c => <span key={c.code} className="store-sold-channel"><ChannelBadge name={c.name} color={c.color}/> <strong>{fmtQty(c.orders)} ออเดอร์</strong> <small>{fmtQty(c.units)} ชิ้น</small></span>)}</div>}
-    <div className="store-sold-grid">{items.map(i => <div key={i.key} className="store-sold-chip"><span>{i.name}{i.kind === 'main' ? <small> (คลังหลัก)</small> : null}</span><strong>{fmtQty(i.qty)} <small>{i.kind === 'model' ? 'ชุด' : i.unit}</small></strong></div>)}</div>
+    {items.length > 0 && <p className="inv-muted store-sold-hint">{selected ? 'กดชื่อสินค้าที่เลือกอีกครั้งเพื่อดูทั้งหมด' : 'กดที่สินค้าเพื่อดูเฉพาะรายการขายของสินค้านั้นด้านล่าง'}</p>}
+    <div className="store-sold-grid">{items.map(i => <button type="button" key={i.key} className={`store-sold-chip${selected === i.key ? ' is-selected' : ''}`} aria-pressed={selected === i.key} onClick={() => onSelect(selected === i.key ? '' : i.key, i.name)}><span>{i.name}{i.kind === 'main' ? <small> (คลังหลัก)</small> : null}</span><strong>{fmtQty(i.qty)} <small>{i.kind === 'model' ? 'ชุด' : i.unit}</small></strong></button>)}</div>
   </div>;
 }
 
 export function StoreSales({api, role, userId, revision, onChanged, actionBusy}) {
   const today = localDay(new Date());
+  const [month, setMonth] = useState(currentMonth());
+  const [day, setDay] = useState('');
+  const [selected, setSelected] = useState('');
+  const [selectedName, setSelectedName] = useState('');
   const [from, setFrom] = useState(today.slice(0, 8) + '01');
   const [to, setTo] = useState(today);
+  // board period drives the list below (picked day, else the month)
+  const applyPeriod = (m, d) => { const r = salesPeriodRange(m, d, today); setFrom(r.from); setTo(r.to); };
+  const pickMonth = m => { setMonth(m); setDay(''); applyPeriod(m, ''); };
+  const pickDay = d => { const m = d ? {year: Number(d.slice(0, 4)), month: Number(d.slice(5, 7))} : month; setMonth(m); setDay(d); applyPeriod(m, d); };
+  const pickItem = (key, name) => { setSelected(key); setSelectedName(key ? name : ''); };
   const [search, setSearch] = useState('');
   const [cancelling, setCancelling] = useState(null);
   const [channel, setChannel] = useState('');
@@ -100,7 +113,8 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
   const state = useStoreRead(() => api.store_list_sales({date_from: from, date_to: to, timezone: 'Asia/Bangkok', limit: 1000}), revision, [from, to]);
   const rows = useMemo(() => (state.data || []).filter(s => !search.trim() || (s.tag || '').toLowerCase().includes(search.trim().toLowerCase()))
     .filter(s => !channel || s.pending || s.channel_code === channel)
-    .map(s => ({...s, channel_label: s.channel_name || '', status_label: storeSaleStatusLabel(s.status, s.pending), created_at_label: fmtTime(s.created_at), items: linesSummary(s.lines)})), [state.data, search, channel]);
+    .filter(s => saleHasItem(s, selected))
+    .map(s => ({...s, channel_label: s.channel_name || '', status_label: storeSaleStatusLabel(s.status, s.pending), created_at_label: fmtTime(s.created_at), items: linesSummary(s.lines)})), [state.data, search, channel, selected]);
   const pending = rows.filter(s => s.pending && s.status === 'active').sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   const rest = rows.filter(s => !(s.pending && s.status === 'active'));
   const card = s => <SaleCard key={s.sale_id} api={api} s={s} role={role} userId={userId} actionBusy={actionBusy} cancelling={cancelling} setCancelling={setCancelling} onChanged={onChanged}/>;
@@ -108,7 +122,8 @@ export function StoreSales({api, role, userId, revision, onChanged, actionBusy})
     <div className="inv-toolbar"><h2>รายการขายหน้าร้าน</h2>
       {role === 'admin' && <button type="button" onClick={() => setManaging(true)}>ตั้งค่าช่องทาง</button>}
       <button type="button" disabled={!rows.length} onClick={() => downloadCSV(`store_sales_${from}_${to}.csv`, reportCSV(rows, saleColumns, {from, to, timezone: 'Asia/Bangkok'}))}>ส่งออก CSV</button></div>
-    <StoreSoldBoard api={api} revision={revision}/>
+    <StoreSoldBoard api={api} revision={revision} month={month} day={day} onMonth={pickMonth} onDay={pickDay} selected={selected} onSelect={pickItem}/>
+    {selected && <p className="store-sold-filter" role="status">กำลังดูเฉพาะ <b>{selectedName}</b> <button type="button" onClick={() => pickItem('', '')}>ดูทั้งหมด</button></p>}
     <div className="inv-filters">
       <label>ตั้งแต่<input type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)}/></label>
       <label>ถึง<input type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)}/></label>
