@@ -584,13 +584,7 @@
 .inventory-v2 .store-channel-actions{display:flex;gap:8px;flex-wrap:wrap;}
 .inventory-v2 .store-channel-rule{border:1px solid #E3DED2;border-radius:10px;padding:10px;display:grid;gap:8px;}
 
-/* ---- sold board: pick a day, tap a product to filter the list ---- */
-.inventory-v2 .store-sold-period{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
-.inventory-v2 .store-sold-day{display:flex;gap:6px;align-items:center;font-size:13px;}
-.inventory-v2 .store-sold-day input{min-height:36px;}
-.inventory-v2 .store-sold-month-btn{min-height:36px;}
-.inventory-v2 .store-sold-hint{margin:6px 0 0;font-size:12px;}
-.inventory-v2 button.store-sold-chip{border:1px solid transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%;}
-.inventory-v2 button.store-sold-chip:hover{background:#E9E4D8;}
-.inventory-v2 button.store-sold-chip.is-selected{background:#DDF1E8;border-color:#0F7A66;box-shadow:0 0 0 1px #0F7A66 inset;}
-.inventory-v2 .store-sold-filter{margin:8px 0;padding:8px 12px;background:#DDF1E8;border-radius:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+/* ---- sold board: tap a product to filter the list (keeps the old chip look) ---- */
+.inventory-v2 button.store-sold-chip{min-height:0;padding:6px 10px;border:0;border-radius:8px;background:#F1EEE6;color:inherit;font:inherit;font-size:13px;font-weight:400;text-align:left;width:100%;display:flex;justify-content:space-between;gap:6px;cursor:pointer;}
+.inventory-v2 button.store-sold-chip:hover:not(:disabled){background:#E9E4D8;border-color:transparent;}
+.inventory-v2 button.store-sold-chip[aria-pressed="true"]{background:#F1EEE6;color:inherit;box-shadow:0 0 0 2px var(--inv-accent,#0F7A66) inset;}
