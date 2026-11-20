@@ -44,7 +44,7 @@ test('store role only sees the store tab; admin gets the store tab; purchasing h
   assert.ok(!workspaceTabs('staff').includes('store'));
 });
 test('store RPC contracts', () => {
-  assert.equal(mutationParameters.store_create_sale, 'tag lines reason');
+  assert.equal(mutationParameters.store_create_sale, 'tag lines reason other');
   assert.equal(mutationParameters.store_transfer, 'lines note');
   assert.ok('store_list_stock' in readParameters && 'combined_balance' in readParameters);
 });
@@ -103,4 +103,43 @@ test('latestSales: newest 3 first, tolerates empty', () => {
   assert.deepEqual(latestSales(rows).map(r => r.sale_id), [1, 2, 0]);
   assert.deepEqual(latestSales(rows, 1).map(r => r.sale_id), [1]);
   assert.deepEqual(latestSales(null), []);
+});
+
+import {buildChannelPattern, matchChannel, tagChannelState, tagChannelOk, channelOtherFlag, describeChannelRule, TAG_MISMATCH_TEXT} from './storeApi.js';
+const CHANNELS = [
+  {code: 'tiktok', name: 'TikTok', color: 'red', active: true, pattern: '^[0-9]{18}$', spec: {prefix: '', digits: 18, with_date: false, with_seq: false}},
+  {code: 'shipnity', name: 'Shipnity', color: 'blue', active: true, pattern: buildChannelPattern({prefix: 'RE', digits: 6, with_date: true, with_seq: true}), spec: {prefix: 'RE', digits: 6, with_date: true, with_seq: true}},
+  {code: 'other', name: 'อื่นๆ', color: 'amber', active: true, pattern: null, is_system: true},
+];
+test('channel lock: the 13 real tags match, typos do not', () => {
+  for (const t of ['587229145958089832', '587270671046509775', 'RE261118-29', 're261120-6', ' RE261116-26 ', 'RE261120-9999']) assert.ok(matchChannel(t, CHANNELS), t);
+  assert.equal(matchChannel('587229145958089832', CHANNELS).code, 'tiktok');
+  assert.equal(matchChannel('RE261118-29', CHANNELS).code, 'shipnity');
+  for (const t of ['', 'ABC-99', '58722914595808983', '5872291459580898321', 'RE261345-3', 'RE261132-3', 'RE2611183', 'AB261120-5', 'RE261120-0', 'RE261120-05', 'RE261120-12345', 'REA 261120-79']) assert.equal(matchChannel(t, CHANNELS), null, t);
+});
+test('channel lock: disabled channel no longer matches; tick อื่นๆ allows a mismatch', () => {
+  const off = CHANNELS.map(c => c.code === 'tiktok' ? {...c, active: false} : c);
+  assert.equal(matchChannel('587229145958089832', off), null);
+  assert.equal(tagChannelState('ABC-99', CHANNELS, false).state, 'mismatch');
+  assert.equal(tagChannelState('ABC-99', CHANNELS, true).state, 'other');
+  assert.equal(tagChannelState('587229145958089832', CHANNELS, true).state, 'match');
+  assert.equal(tagChannelState('', CHANNELS, false).state, 'empty');
+  assert.equal(tagChannelOk('ABC-99', CHANNELS, false), false);
+  assert.equal(tagChannelOk('ABC-99', CHANNELS, true), true);
+  assert.equal(tagChannelOk('ABC-99', [], false), true);
+  assert.equal(tagChannelOk('', CHANNELS, false), true);
+  assert.deepEqual(channelOtherFlag('ABC-99', CHANNELS, true), {other: true});
+  assert.deepEqual(channelOtherFlag('587229145958089832', CHANNELS, true), {});
+  assert.deepEqual(channelOtherFlag('ABC-99', CHANNELS, false), {});
+  assert.equal(storeError(new Error('TAG_CHANNEL_MISMATCH')), TAG_MISMATCH_TEXT);
+});
+test('buildChannelPattern mirrors the database rule builder', () => {
+  assert.equal(buildChannelPattern({prefix: 'lz', digits: 15}), '^LZ[0-9]{15}$');
+  assert.equal(buildChannelPattern({prefix: '', digits: 18}), '^[0-9]{18}$');
+  assert.ok(buildChannelPattern({prefix: '', with_date: true, with_seq: true}).startsWith('^[A-Z]{1,3}'));
+  assert.equal(buildChannelPattern({prefix: 'bad prefix', digits: 5}), null);
+  assert.equal(buildChannelPattern({prefix: '', digits: 0}), null);
+  assert.equal(buildChannelPattern({prefix: '', digits: 5, with_seq: true}), null);
+  assert.equal(describeChannelRule(CHANNELS[0]), 'ตัวเลขล้วน 18 หลัก');
+  assert.match(describeChannelRule(CHANNELS[1]), /^RE \+ วันที่ 6 หลัก/);
 });

@@ -1,9 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {localDay} from '../../lib/inventoryReports.js';
-import {latestSales, sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag} from '../../lib/storeApi.js';
+import {latestSales, sortByStoreOrder, moveItem, orderPayload, addToCart, cartLines, parseDuplicateSale, optionalSaleTag, parseQty, storeError, validateSaleTag, tagChannelOk, channelOtherFlag} from '../../lib/storeApi.js';
 import {ModalHeader} from '../InventoryUI.jsx';
 import {SaleCard} from './StoreSales.jsx';
-import {fmtTime, fmtQty, useStoreRead, ReadNote, OpResult, useOperation} from './shared.jsx';
+import {fmtTime, fmtQty, useStoreRead, ReadNote, OpResult, useOperation, TagField} from './shared.jsx';
 
 /* ---------------- Sell (storefront stock, or "อื่นๆ" = main warehouse stock) ---------------- */
 const normalizeStoreItem = i => ({key: `${i.item_kind}:${i.item_id}`, kind: i.item_kind, id: i.item_id, name: i.name, unit: i.unit, qty: Number(i.qty), category: i.category, source: 'store'});
@@ -66,6 +66,9 @@ export function StoreSell({api, role, userId, source = 'store', revision, onChan
   const desktop = useIsDesktop();
   const stock = useStoreRead(() => (isMain ? api.store_list_main_items() : api.store_list_stock()), revision, [source]);
   const orderRead = useStoreRead(() => (isMain ? Promise.resolve([]) : api.store_list_order()), revision, [source]);
+  const channelRead = useStoreRead(() => api.store_list_channels(), revision);
+  const channels = channelRead.data;
+  const [other, setOther] = useState(false);
   const [editingOrder, setEditingOrder] = useState(false);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
@@ -101,7 +104,8 @@ export function StoreSell({api, role, userId, source = 'store', revision, onChan
       const clean = isMain ? optionalSaleTag(tag) : validateSaleTag(tag);
       if (!cart.length) throw new Error('เลือกสินค้าอย่างน้อย 1 รายการ');
       if (isMain && !reason.trim()) throw new Error('ต้องใส่เหตุผลการขายอื่นๆ ก่อนบันทึก');
-      return api.store_create_sale({...(clean ? {tag: clean} : {}), lines: cartLines(cart), ...(isMain ? {reason: reason.trim()} : {})});
+      if (clean && !tagChannelOk(clean, channels, other)) throw new Error('TAG_CHANNEL_MISMATCH');
+      return api.store_create_sale({...(clean ? {tag: clean, ...channelOtherFlag(clean, channels, other)} : {}), lines: cartLines(cart), ...(isMain ? {reason: reason.trim()} : {})});
     });
   }
   function addToExisting() {
@@ -113,7 +117,7 @@ export function StoreSell({api, role, userId, source = 'store', revision, onChan
   }
   const done = useCallback(result => {
     setMessage(result?.tag ? `บันทึกการขาย ${result.tag} แล้ว` : 'บันทึกแล้ว — ตัดสต็อกแล้ว รอกรอกแท็กทีหลัง (ดูที่ รายการขาย)');
-    setCart([]); setTag(''); setReason(''); setDuplicate(null); op.reset(); onChanged();
+    setCart([]); setTag(''); setOther(false); setReason(''); setDuplicate(null); op.reset(); onChanged();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset is stable
   }, [onChanged]);
   const failed = useCallback(error => {
@@ -134,9 +138,9 @@ export function StoreSell({api, role, userId, source = 'store', revision, onChan
         <button type="button" className="inv-icon" aria-label={`เอา ${r.name} ออก`} disabled={disabled} onClick={() => setCart(cart.filter(x => x !== r))}>✕</button>
       </li>)}</ul>
       {isMain && <label className="store-reason">เหตุผลที่ขายอื่นๆ (จำเป็น)<input aria-label="เหตุผลการขายอื่นๆ" required value={reason} maxLength={200} onChange={e => setReason(e.target.value)} placeholder="เช่น ลูกค้าขอซื้อเพิ่ม / ของเสียเปลี่ยนให้"/></label>}
+      <TagField channels={channels} tag={tag} onTag={v => { setTag(v); setDuplicate(null); }} other={other} onOther={setOther} required={!isMain} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย *'} describedBy="tag-help"/>
       <div className="store-tag-row">
-        <input aria-label="รหัสแท็กการขาย" required={!isMain} value={tag} onChange={e => { setTag(e.target.value); setDuplicate(null); }} placeholder={isMain ? 'แท็กการขาย (ใส่ทีหลังได้)' : 'แท็กการขาย (เลข Shipnity) *'} aria-describedby="tag-help" autoComplete="off"/>
-        <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim()) || (isMain && !reason.trim())}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
+        <button type="submit" className="inv-primary" disabled={disabled || !cart.length || (!isMain && !tag.trim()) || (isMain && !reason.trim()) || !tagChannelOk(tag, channels, other)}>{tag.trim() ? 'บันทึกการขาย' : 'บันทึก (รอแท็ก)'}</button>
       </div>
       <p id="tag-help" className="inv-muted store-tag-help">{isMain ? 'เว้นว่าง = ตัดคลังหลักทันที แล้วไปกรอกแท็กทีหลังที่ “รายการขาย”' : <><b className="store-req">ต้องใส่แท็ก</b> · 1 แท็ก = 1 ออเดอร์ ใช้ซ้ำไม่ได้ (ไม่สนตัวพิมพ์ ช่องว่าง ขีด)</>}</p>
       {duplicate && <div role="alert" className="store-duplicate">

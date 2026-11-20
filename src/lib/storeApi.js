@@ -62,6 +62,14 @@ export const cartLines = cart => cart.map(row => ({ kind: row.kind, id: row.id, 
 export function storeError(error) {
   const message = error?.message || 'ทำรายการไม่สำเร็จ';
   if (message === 'DUPLICATE_SALE_TAG') return 'แท็กนี้ถูกใช้ไปแล้ว';
+  if (message === 'TAG_CHANNEL_MISMATCH') return TAG_MISMATCH_TEXT;
+  if (message === 'CHANNEL_NAME_INVALID') return 'ชื่อช่องทางต้องยาว 1–30 ตัวอักษร';
+  if (message === 'CHANNEL_NAME_DUPLICATE') return 'มีช่องทางชื่อนี้แล้ว';
+  if (message === 'CHANNEL_RULE_INVALID') return 'กฎของเลขแท็กไม่ถูกต้อง ตรวจคำขึ้นต้น จำนวนหลัก และตัวเลือกวันที่';
+  if (message === 'CHANNEL_RULE_CONFLICT') return 'กฎนี้ชนกับช่องทางอื่นหรือแท็กที่ขายไปแล้ว บันทึกไม่ได้';
+  if (message === 'CHANNEL_IN_USE') return 'ช่องทางนี้เคยมียอดขายแล้ว ลบไม่ได้ ให้ใช้ “ปิดใช้งาน” แทน';
+  if (message === 'CHANNEL_SYSTEM') return 'ช่องทางของระบบ แก้ ปิด หรือลบไม่ได้';
+  if (message === 'CHANNEL_NOT_FOUND') return 'ไม่พบช่องทางนี้ ลองรีเฟรชหน้า';
   if (message === 'SALE_TAG_REQUIRED') return `ต้องกรอกรหัสแท็กการขาย (อย่างน้อย ${SALE_TAG_MIN} ตัวอักษร)`;
   if (/^MAIN_STOCK_SHORT/.test(message)) return `ของในคลังหลักไม่พอ: ${message.replace(/^MAIN_STOCK_SHORT:\s*/, '')} (ยังไม่ตัดอะไรเลย)`;
   if (message === 'FEEDBACK_MESSAGE_REQUIRED') return 'พิมพ์ข้อความอย่างน้อย 3 ตัวอักษร';
@@ -148,3 +156,46 @@ export const storeModeKeys = role => role === 'store' ? ['sell', 'stock', 'sales
 
 // newest first, first n (for the "ขายล่าสุด" panel on the sell page)
 export const latestSales = (sales, n = 3) => [...(sales || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, n);
+
+// ---- sales channels (TikTok / Shipnity / admin-added): the tag number decides the channel ----
+export const TAG_MISMATCH_TEXT = 'ไม่ตรงกับช่องทางที่มีอยู่ ติ๊กอื่นๆ เพื่อทำรายการ';
+export const CHANNEL_COLORS = [['red', 'แดง'], ['blue', 'น้ำเงิน'], ['amber', 'ส้ม'], ['green', 'เขียว'], ['purple', 'ม่วง'], ['gray', 'เทา']];
+const DATE_BODY = '[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])';
+// Same rule builder as the database (inventory_store_save_channel); null = invalid spec.
+export function buildChannelPattern(spec) {
+  const prefix = String(spec?.prefix ?? '').trim().toUpperCase();
+  const digits = Number(spec?.digits || 0);
+  const withDate = Boolean(spec?.with_date), withSeq = Boolean(spec?.with_seq);
+  if (!/^[A-Z0-9]{0,8}$/.test(prefix) || (withSeq && !withDate)) return null;
+  if (!withDate && !(Number.isInteger(digits) && digits >= 1 && digits <= 30)) return null;
+  const lead = prefix || (withDate ? '[A-Z]{1,3}' : '');
+  const body = withDate ? DATE_BODY + (withSeq ? '-[1-9][0-9]{0,3}' : '') : `[0-9]{${digits}}`;
+  return `^${lead}${body}$`;
+}
+export function describeChannelRule(channel) {
+  const spec = channel?.spec;
+  if (!spec) return channel?.is_system ? 'ไม่ตรวจรูปแบบ ติ๊กเองเมื่อแท็กไม่ตรงช่องทางอื่น' : '—';
+  const prefix = String(spec.prefix || '').trim();
+  if (spec.with_date) return `${prefix || 'ตัวอักษร 1–3 ตัว'} + วันที่ 6 หลัก (ปีเดือนวัน)${spec.with_seq ? ' + ขีด + ลำดับ 1–4 หลัก' : ''}`;
+  return `${prefix ? prefix + ' + ' : ''}ตัวเลขล้วน ${spec.digits} หลัก`;
+}
+// First active channel (list is ordered by position) whose rule matches the tag; null = no match.
+export function matchChannel(tag, channels) {
+  const value = String(tag ?? '').trim().toUpperCase();
+  if (!value) return null;
+  for (const c of channels || []) {
+    if (!c.active || !c.pattern) continue;
+    try { if (new RegExp(c.pattern).test(value)) return c; } catch { /* bad rule: ignore */ }
+  }
+  return null;
+}
+// state of the tag box: 'empty' | 'match' | 'mismatch' | 'other' (mismatch + ticked อื่นๆ)
+export function tagChannelState(tag, channels, other) {
+  if (!String(tag ?? '').trim()) return {state: 'empty', channel: null};
+  const channel = matchChannel(tag, channels);
+  if (channel) return {state: 'match', channel};
+  return {state: other ? 'other' : 'mismatch', channel: null};
+}
+// can the sale be saved? Without a loaded channel list the database still enforces the lock.
+export const tagChannelOk = (tag, channels, other) => !String(tag ?? '').trim() || !(channels || []).length || tagChannelState(tag, channels, other).state !== 'mismatch';
+export const channelOtherFlag = (tag, channels, other) => (other && !matchChannel(tag, channels) ? {other: true} : {});
