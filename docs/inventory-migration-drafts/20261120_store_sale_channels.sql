@@ -176,7 +176,7 @@ BEGIN
  IF p_code IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.store_sale_channels WHERE code=p_code) THEN RAISE EXCEPTION 'CHANNEL_NOT_FOUND'; END IF;
  IF EXISTS (SELECT 1 FROM public.store_sale_channels WHERE lower(btrim(name))=lower(v_name) AND code IS DISTINCT FROM p_code) THEN RAISE EXCEPTION 'CHANNEL_NAME_DUPLICATE'; END IF;
  v_lead:=CASE WHEN v_prefix<>'' THEN v_prefix WHEN v_date THEN '[A-Z]{1,3}' ELSE '' END;
- v_body:=CASE WHEN v_date THEN '[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])'||CASE WHEN v_seq THEN '-[0-9]{1,4}' ELSE '' END ELSE '[0-9]{'||v_digits||'}' END;
+ v_body:=CASE WHEN v_date THEN '[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])'||CASE WHEN v_seq THEN '-[1-9][0-9]{0,3}' ELSE '' END ELSE '[0-9]{'||v_digits||'}' END;
  v_pat:='^'||v_lead||v_body||'$';
  v_ex:=CASE WHEN v_date THEN coalesce(nullif(v_prefix,''),'AB')||'261118'||CASE WHEN v_seq THEN '-1' ELSE '' END ELSE v_prefix||repeat('1',v_digits) END;
  IF EXISTS (SELECT 1 FROM public.store_sale_channels WHERE pattern=v_pat AND active AND code IS DISTINCT FROM p_code) THEN RAISE EXCEPTION 'CHANNEL_RULE_CONFLICT'; END IF;
