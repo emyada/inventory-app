@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useRefreshRead} from '../../hooks/useRefreshRead.js';
 import {useInventoryOperation} from '../../hooks/useInventoryOperation.js';
-import {storeError} from '../../lib/storeApi.js';
+import {storeError, tagChannelState, TAG_MISMATCH_TEXT} from '../../lib/storeApi.js';
 
 export const fmtTime = value => new Date(value).toLocaleString('th-TH', {timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short'});
 export const fmtQty = n => Number(n).toLocaleString('th-TH', {maximumFractionDigits: 3});
@@ -50,3 +50,26 @@ export function useOperation() {
   return {operation, error, setError, run, reset, busy: Boolean(operation)};
 }
 
+
+// Channel badge (TikTok / Shipnity / ...) — colour comes from the channel setting.
+export function ChannelBadge({name, color}) {
+  if (!name) return null;
+  return <span className={`store-channel store-channel-${color || 'gray'}`}>{name}</span>;
+}
+
+// Sale-tag box: shows the channel badge when the number matches a rule; otherwise asks to tick อื่นๆ.
+export function TagField({channels, tag, onTag, other, onOther, required, placeholder, label = 'รหัสแท็กการขาย', describedBy}) {
+  const {state, channel} = tagChannelState(tag, channels, other);
+  const known = (channels || []).length > 0;
+  const other_ = (channels || []).find(c => c.code === 'other');
+  return <div className="store-tag-field">
+    <div className="store-tag-top">
+      <span className="store-tag-label">แท็กการขาย</span>
+      {state === 'match' && <ChannelBadge name={channel.name} color={channel.color}/>}
+      {state === 'other' && <ChannelBadge name={other_?.name || 'อื่นๆ'} color={other_?.color || 'amber'}/>}
+    </div>
+    <input aria-label={label} required={required} value={tag} onChange={e => onTag(e.target.value)} placeholder={placeholder} aria-describedby={describedBy} autoComplete="off" aria-invalid={known && state === 'mismatch'}/>
+    {known && state === 'mismatch' && <p role="alert" className="store-tag-bad">{TAG_MISMATCH_TEXT}</p>}
+    {known && (state === 'mismatch' || state === 'other') && <label className="store-tag-other"><input type="checkbox" checked={Boolean(other)} onChange={e => onOther(e.target.checked)}/> {other_?.name || 'อื่นๆ'}</label>}
+  </div>;
+}

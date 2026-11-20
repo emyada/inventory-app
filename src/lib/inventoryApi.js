@@ -28,10 +28,12 @@ export const mutationParameters = Object.freeze({
   resolve_feedback: 'feedback_id done',
   store_set_min: 'item_kind item_id min_qty',
   store_set_order: 'items',
-  store_create_sale: 'tag lines reason',
+  store_create_sale: 'tag lines reason other',
   store_add_sale_lines: 'sale_id lines reason',
   store_cancel_sale: 'sale_id reason',
-  store_set_sale_tag: 'sale_id tag',
+  store_set_sale_tag: 'sale_id tag other',
+  store_save_channel: 'code name color prefix digits with_date with_seq',
+  store_channel_action: 'code action',
   store_set_pin: 'material_id pinned',
   store_adjust: 'item_kind item_id counted_qty reason',
 });
@@ -55,6 +57,7 @@ export const readParameters = Object.freeze({
   store_report: 'date_from date_to timezone',
   store_list_transfers: 'date_from date_to timezone limit',
   store_list_order: '',
+  store_list_channels: '',
   list_feedback: 'status limit',
   combined_balance: '',
 });

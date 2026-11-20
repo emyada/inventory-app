@@ -3,10 +3,11 @@ import {ReportTable} from '../InventoryReports.jsx';
 import {localDay, reportCSV} from '../../lib/inventoryReports.js';
 import {downloadCSV} from '../../utils/csv.js';
 import {linesSummary, daysWaiting} from '../../lib/storeApi.js';
-import {fmtTime, useStoreRead, ReadNote} from './shared.jsx';
+import {fmtTime, fmtQty, useStoreRead, ReadNote, ChannelBadge} from './shared.jsx';
 
 /* ---------------- Reports: storefront + combined balance (admin / purchasing) ---------------- */
 const storeReportColumns = [['name', 'รายการ'], ['kind_label', 'ประเภท'], ['unit', 'หน่วย'], ['opening', 'ต้นงวด'], ['transfer_in', 'รับจากคลังหลัก'], ['transfer_out', 'โอนคืนคลังหลัก'], ['sold', 'ขาย'], ['sale_cancelled', 'ยกเลิกขาย (คืน)'], ['adjust_in', 'ปรับเพิ่ม'], ['adjust_out', 'ปรับลด'], ['closing', 'คงเหลือ']];
+const channelTotalsOf = channels => { const list = (channels || []).filter(c => Number(c.orders) > 0 || c.active); const total = list.reduce((n, c) => n + Number(c.orders), 0); return list.map(c => ({...c, share: total ? Math.round(Number(c.orders) * 100 / total) : 0})); };
 export function StoreReports({api, revision}) {
   // The store tab shows only sets left at the storefront and store movements; main-stock totals live in the Report tab.
   const today = localDay(new Date());
@@ -17,6 +18,7 @@ export function StoreReports({api, revision}) {
   const items = useMemo(() => (report.data?.items || []).map(r => ({...r, kind_label: r.item_kind === 'model' ? 'ชุดสำเร็จรูป' : 'อะไหล่'})), [report.data]);
   const mainSales = useMemo(() => report.data?.main_sales || [], [report.data]);
   const pendingRows = useMemo(() => (report.data?.pending || []).map(p => ({...p, created_at_label: fmtTime(p.created_at), waiting: daysWaiting(p.created_at), items: linesSummary(p.lines)})), [report.data]);
+  const channelRows = useMemo(() => channelTotalsOf(report.data?.channels), [report.data]);
   const sets = useMemo(() => (stock.data || []).filter(r => r.item_kind === 'model').map(r => ({name: r.name, category: r.category, store_sets: r.qty})), [stock.data]);
   return <section className="store-reports">
     <h2>รายงานหน้าร้าน</h2>
@@ -34,6 +36,12 @@ export function StoreReports({api, revision}) {
     {!report.busy && !report.error && <>
       <button type="button" disabled={!items.length} onClick={() => downloadCSV(`store_report_${from}_${to}.csv`, reportCSV(items, storeReportColumns, {from, to, timezone: 'Asia/Bangkok'}))}>ส่งออกรายงานหน้าร้าน CSV</button>
       <ReportTable rows={items} columns={storeReportColumns}/>
+      <h3>ยอดขายแยกตามช่องทาง</h3>
+      <div className="store-channel-report">{channelRows.map(c => <article className="inv-card" key={c.code}>
+        <div className="inv-toolbar"><ChannelBadge name={c.name} color={c.color}/><span><strong>{fmtQty(c.orders)} ออเดอร์</strong> <span className="inv-muted">· {fmtQty(c.units)} ชิ้น · {c.share}%</span></span></div>
+        <div className="store-channel-bar" aria-hidden="true"><i className={`store-channel-${c.color}`} style={{width: `${c.share}%`}}/></div>
+        {c.items.length > 0 ? <p className="inv-muted">{c.items.map(i => `${i.name} ×${fmtQty(i.qty)}`).join(', ')}</p> : <p className="inv-muted">ยังไม่มียอด</p>}
+      </article>)}</div>
       <h3>ขายจากคลังหลัก (อื่นๆ)</h3>
       {mainSales.length ? <ReportTable rows={mainSales} columns={[['name', 'วัตถุดิบ'], ['unit', 'หน่วย'], ['qty', 'จำนวนที่ขาย']]}/> : <p className="inv-empty">ไม่มีการขายจากคลังหลักในช่วงนี้</p>}
       <h3>รอแท็ก</h3>
