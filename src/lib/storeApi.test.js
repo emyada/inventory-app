@@ -143,3 +143,17 @@ test('buildChannelPattern mirrors the database rule builder', () => {
   assert.equal(describeChannelRule(CHANNELS[0]), 'ตัวเลขล้วน 18 หลัก');
   assert.match(describeChannelRule(CHANNELS[1]), /^RE \+ วันที่ 6 หลัก/);
 });
+
+test('channel lock: Shipnity date must exist and not be after today (Bangkok)', () => {
+  const now = Date.parse('2026-11-20T10:00:00+07:00');
+  assert.equal(matchChannel('RE261120-1', CHANNELS, now)?.code, 'shipnity');
+  assert.equal(matchChannel('RE261119-9', CHANNELS, now)?.code, 'shipnity');
+  assert.equal(matchChannel('RE261121-1', CHANNELS, now), null, 'tomorrow');
+  assert.equal(matchChannel('RE270101-1', CHANNELS, now), null, 'next year');
+  assert.equal(matchChannel('RE260230-1', CHANNELS, now), null, '30 Feb does not exist');
+  assert.equal(matchChannel('RE240229-1', CHANNELS, now)?.code, 'shipnity', 'leap day');
+  assert.equal(matchChannel('RE260229-1', CHANNELS, now), null, 'not a leap year');
+  // just after midnight Bangkok the new day counts, 23:30 UTC the day before is already the next Bangkok day
+  assert.equal(matchChannel('RE261121-1', CHANNELS, Date.parse('2026-11-20T17:30:00Z'))?.code, 'shipnity');
+  assert.equal(matchChannel('587229145958089832', CHANNELS, now)?.code, 'tiktok');
+});

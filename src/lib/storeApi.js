@@ -180,12 +180,24 @@ export function describeChannelRule(channel) {
   return `${prefix ? prefix + ' + ' : ''}ตัวเลขล้วน ${spec.digits} หลัก`;
 }
 // First active channel (list is ordered by position) whose rule matches the tag; null = no match.
-export function matchChannel(tag, channels) {
+// Date-type rules (…YYMMDD…): the date must exist and must not be after today (Bangkok), same as the database.
+export function tagDateOk(tag, spec, now = Date.now()) {
+  const value = String(tag ?? '').trim().toUpperCase();
+  const prefix = String(spec?.prefix || '').toUpperCase();
+  const body = prefix ? value.slice(prefix.length) : value.replace(/^[A-Z]+/, '');
+  const m = /^(\d{2})(\d{2})(\d{2})/.exec(body);
+  if (!m) return false;
+  const [y, mo, d] = [2000 + Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return false;
+  return `${y}-${m[2]}-${m[3]}` <= bangkokDay(now);
+}
+export function matchChannel(tag, channels, now = Date.now()) {
   const value = String(tag ?? '').trim().toUpperCase();
   if (!value) return null;
   for (const c of channels || []) {
     if (!c.active || !c.pattern) continue;
-    try { if (new RegExp(c.pattern).test(value)) return c; } catch { /* bad rule: ignore */ }
+    try { if (new RegExp(c.pattern).test(value) && (!c.spec?.with_date || tagDateOk(value, c.spec, now))) return c; } catch { /* bad rule: ignore */ }
   }
   return null;
 }
