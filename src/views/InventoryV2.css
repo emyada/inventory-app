@@ -583,3 +583,8 @@
 .inventory-v2 .store-channel-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
 .inventory-v2 .store-channel-actions{display:flex;gap:8px;flex-wrap:wrap;}
 .inventory-v2 .store-channel-rule{border:1px solid #E3DED2;border-radius:10px;padding:10px;display:grid;gap:8px;}
+
+/* ---- sold board: tap a product to filter the list (keeps the old chip look) ---- */
+.inventory-v2 button.store-sold-chip{min-height:0;padding:6px 10px;border:0;border-radius:8px;background:#F1EEE6;color:inherit;font:inherit;font-size:13px;font-weight:400;text-align:left;width:100%;display:flex;justify-content:space-between;gap:6px;cursor:pointer;}
+.inventory-v2 button.store-sold-chip:hover:not(:disabled){background:#E9E4D8;border-color:transparent;}
+.inventory-v2 button.store-sold-chip[aria-pressed="true"]{background:#F1EEE6;color:inherit;box-shadow:0 0 0 2px var(--inv-accent,#0F7A66) inset;}

@@ -157,3 +157,14 @@ test('channel lock: Shipnity date must exist and not be after today (Bangkok)', 
   assert.equal(matchChannel('RE261121-1', CHANNELS, Date.parse('2026-11-20T17:30:00Z'))?.code, 'shipnity');
   assert.equal(matchChannel('587229145958089832', CHANNELS, now)?.code, 'tiktok');
 });
+
+import {saleHasItem} from './storeApi.js';
+test('sold-board filter: a sale matches the tapped item only', () => {
+  const sale = {lines: [{item_kind: 'model', item_id: 'm1', source: 'store'}, {item_kind: 'material', item_id: 'x9', source: 'main'}]};
+  assert.equal(saleHasItem(sale, 'model:m1'), true);
+  assert.equal(saleHasItem(sale, 'model:m2'), false);
+  assert.equal(saleHasItem(sale, 'main:x9'), true, 'main-stock line');
+  assert.equal(saleHasItem(sale, 'material:x9'), false, 'store material is a different line than main');
+  assert.equal(saleHasItem(sale, ''), true, 'no filter = everything');
+  assert.equal(saleHasItem({lines: []}, 'model:m1'), false);
+});
