@@ -4,9 +4,11 @@ export function previewReference(model,raw,{repair=false}={}) {
  if(repair)return {raw:String(raw??''),canonical:input||null};
  if(!input)throw new Error('กรุณาระบุเลขออเดอร์');
  if(model?.request_contract===requestReferenceContract && (model.work_kind==='supplemental'||['Sleepplug','Lifestyle'].includes(model.category)||(typeof model.order_prefix==='string'&&model.order_prefix!==''))){
+  // Package (supplemental) has no fixed prefix: staff type the whole reference (e.g. CL908)
+  if(model.work_kind==='supplemental')return {raw:String(raw),canonical:input};
   if(!/^[0-9]+$/.test(input))throw new Error('กรอกเฉพาะตัวเลขออเดอร์');
-  if(model.work_kind!=='supplemental'&&typeof model.order_prefix!=='string')throw new Error('Admin ยังไม่ได้กำหนด prefix ของรุ่น');
-  return {raw:String(raw),canonical:(model.work_kind==='supplemental'?'':model.order_prefix||'')+input};
+  if(typeof model.order_prefix!=='string')throw new Error('Admin ยังไม่ได้กำหนด prefix ของรุ่น');
+  return {raw:String(raw),canonical:(model.order_prefix||'')+input};
  }
  return {raw:String(raw),canonical:input};
 }

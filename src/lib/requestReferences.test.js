@@ -41,3 +41,10 @@ test('any model with a configured prefix (e.g. Tactical) takes numeric input and
  assert.throws(()=>previewReference(tactical,'A12'));
  assert.equal(previewReference({...tactical,order_prefix:''},'A12').canonical,'A12');
 });
+
+test('Package takes a free-text reference with letters (no fixed prefix)',()=>{
+ const pkg={...model,category:'CIEM',order_prefix:null,work_kind:'supplemental'};
+ assert.equal(previewReference(pkg,' CL908 ').canonical,'CL908');
+ assert.equal(previewReference(pkg,'001').canonical,'001');
+ assert.throws(()=>previewReference(pkg,'  '));
+});
